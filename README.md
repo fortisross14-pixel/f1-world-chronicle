@@ -1,8 +1,8 @@
 # F1 World Chronicle
 
-A long-running Formula racing universe built with Vite and React. It follows an F1-style information architecture while treating the championship as a living world: procedural drivers and staff, feeder categories, alternative careers, changing sponsors, evolving technical orders, protected historic teams and circuits, and a permanent statistical archive.
+A long-running procedural motorsport universe built with Vite and React. The interface borrows the information architecture of Formula 1, but the game world extends far beyond a single championship: F4 prospects rise through F3 and F2, displaced stars rebuild in Formula E or WEC, constructors enter and leave, sponsors reshape budgets and liveries, and every season becomes part of a permanent statistical history.
 
-Real constructor, engine and sponsor brands are used as fictional-universe identities and partnerships. Every driver and staff member is procedural.
+Real automotive, engine and sponsor brands are used as fictional-universe identities and partnerships. All drivers and staff are procedural.
 
 ## Run locally
 
@@ -18,26 +18,62 @@ npm run build
 npm run preview
 ```
 
-Simulation-only smoke test, which does not require React or Vite packages:
+Simulation-only integrity test, which does not require React or Vite packages:
 
 ```bash
 npm run smoke
 ```
 
-## Implemented world
+## GitHub Pages deployment
 
-### Series and careers
+This repository is ready for GitHub Pages through GitHub Actions.
 
-- Formula 1: full weekend and championship detail
-- Formula 2 and Formula 3: active feeder grids, standings, champions and promotion logic
-- Formula E and WEC: alternative, recovery and late-career destinations
-- Abstract Regional/F4 and karting backgrounds for newly generated F3 prospects
-- Academies, reserves, contracts, seat pressure, promotions, demotions, retirements and cross-series moves
-- Stable grid refill logic across many seasons
+1. Push the project to the repository's `main` branch.
+2. Open **Settings → Pages** in GitHub.
+3. Under **Build and deployment**, choose **GitHub Actions** as the source.
+4. Open the **Actions** tab and allow the `Deploy F1 World Chronicle` workflow to finish.
 
-### Procedural rarity model
+Do not publish the source folder directly. Vite must build the site first and GitHub Pages must publish the generated `dist` folder. The included `vite.config.js` uses relative production asset paths, which prevents the `/assets/...` CSS and JavaScript 404 errors that occur when a Vite project is hosted below a repository path.
 
-The launch F1 field contains 22 drivers:
+The browser-console message about an asynchronous listener or a closed message channel is commonly produced by a browser extension. It is separate from the application unless it remains in a clean incognito profile with extensions disabled.
+
+## The universe launcher
+
+The application opens on a dedicated universe screen rather than entering a pre-generated season automatically.
+
+- Three independent IndexedDB universe slots
+- Create, load and permanently delete controls
+- Universe names and last-played metadata
+- Explicit save and return-to-slots controls
+- Autosave without the small `localStorage` quota
+- Portable JSON export and import
+- Schema checks that prevent an older prototype save from crashing a newer build
+
+Schema v5 changes the world model substantially, so saves made by an older build should not be loaded into this version.
+
+## Complete driver world
+
+The Drivers page is a universe database rather than an F1 roster screen. It contains every active and historical driver and can be filtered by:
+
+- Formula 1
+- Formula 2
+- Formula 3
+- Formula 4
+- Formula E
+- WEC
+- Free agents
+- Test drivers
+- Retired drivers
+
+Every row includes a procedural name, nationality flag, rarity, current category or role, team, age, visible current rating and current-season results. Search, rarity filters and sorting make it possible to follow two elite prospects from F4 through their entire careers, or find a former Generational F1 champion now racing in Formula E.
+
+### Rarity and team knowledge
+
+Rarity and fixed base talent are visible to the player because this is a universe chronicle. Teams do **not** see those hidden classifications or future career multipliers. Recruitment decisions use current observed ability, recent results, salary, commercial value, academy knowledge and sponsor fit.
+
+A team can therefore overpay for a driver performing at a 1.01 career multiplier immediately before that driver's curve falls to 0.92, or sign an overlooked young Legend before the rest of the paddock understands how good they are.
+
+The initial F1 distribution is:
 
 - 2 Generational
 - 4 Legend
@@ -46,65 +82,104 @@ The launch F1 field contains 22 drivers:
 - 3 Uncommon
 - 1 Common
 
-F2, F3, Formula E and WEC use their own lower-pyramid distributions. Rarity and base talent never change. Annual form, confidence, age, career phase and the pre-generated career curve change effective performance.
+The lower categories use deeper, lower-skew distributions while still allowing an occasional Legend or Generational prospect to appear very young.
 
-### Race weekends
+## Competitions
+
+F1, F2, F3, F4, Formula E and WEC are first-class competitions. Each competition page has four views:
+
+- **Overview:** current leaders, previous champion and historical headline records
+- **Current Year:** driver standings, team standings and category leaders such as wins, poles, podiums and points
+- **History:** yearly driver champion, points total and team champion
+- **Stats:** accumulated titles, wins, points, poles, podiums and starts
+
+This makes feeder categories navigable histories rather than invisible background calculations.
+
+## Race weekends and weather
 
 - Standard and Sprint weekend formats
-- Three practice sessions or the appropriate Sprint structure
+- Practice sessions and car-setup feedback
 - Q1, Q2 and Q3 elimination logic
-- Independent weather for every session
-- Dynamic race weather timeline with dry, damp and wet track states
+- Independent weather for practice, qualifying, Sprint and race sessions
+- Dynamic race timelines with dry, damp and wet phases
 - Soft, Medium, Hard, Intermediate and Wet tyre behavior
-- Track crossover timing, tyre degradation, pit stops and strategy quality
+- Crossover timing, tyre degradation, pit windows and strategy errors
 - Starts, traffic, overtaking difficulty and circuit-specific car fit
-- Mechanical failures, driver incidents, penalties, Safety Cars, Virtual Safety Cars and red flags
-- Contextual team orders during late-season title fights
-- Official Grand Prix and Sprint points structures
+- Mechanical failures, incidents, penalties, Safety Cars, Virtual Safety Cars and red flags
+- Contextual team orders in title situations
+- Formula-style Grand Prix and Sprint points
 
-A wet qualifying session can promote a wet-weather specialist well above the expected order even when the race is forecast dry. A dry qualifying session can likewise be followed by a wet race in which tyre timing, composure and wet skill become decisive.
+Weather is a core competitive axis rather than a cosmetic random event. A wet-weather specialist can qualify unusually high in rain, then lose that advantage in a dry race. A driver who qualifies poorly on Saturday can become exceptional when rain reaches the circuit on Sunday. Wet skill, composure, strategist quality, pit-wall timing and tyre crossover all affect the result independently.
 
-### Constructors and organizations
+## Constructors, staff and test drivers
 
-- Eleven launch constructors with recognizable brand identities
-- Protected heritage logic so Ferrari-like institutions do not casually disappear
-- Plausible acquisitions and rebrands for vulnerable entries
-- Power-unit suppliers, engine trajectories and occasional supplier changes
-- Eight car-performance dimensions and circuit-specific strengths
-- Facilities, development packages, correlation failures and regulation-cycle resets
-- Team principal, sporting director, technical director, strategy head and two race engineers per F1 team
-- Staff rarity, specialties, contracts, poaching, wins, titles and employment history
+Each F1 organization contains:
 
-### Commercial layer
+- Two race drivers
+- Two procedural test drivers and emergency reserves
+- Team principal
+- Sporting director
+- Technical director
+- Strategy head
+- One race engineer per race driver
+- Engine supplier
+- Eight-dimensional car model
+- Facilities, development capacity and financial structure
 
-- Main and secondary sponsors
-- Sponsor country, value and color identity
-- Driver commercial value and sponsor-country fit
-- Financially vulnerable teams placing more weight on marketability without ignoring sporting ability
-- Dynamic lead-partner changes and livery history
+Test-driver feedback contributes to practice setup and long-term car development. Test drivers can replace an injured race driver, and strong reserve performances can create market narratives or a future race seat.
 
-### Calendar and history
+## Main brands, sponsors and finances
+
+The constructor identity is controlled by a main brand selected primarily from real automotive manufacturers and a smaller set of major non-automotive identities. Examples include Ferrari, Audi, BMW, Lamborghini, Porsche, Toyota, Honda, Aston Martin, McLaren, Mercedes and Red Bull.
+
+A main brand determines:
+
+- Team name and country identity
+- Core annual funding
+- Prestige and expected competitiveness
+- Primary and secondary livery colors
+- Long-term survival strength
+
+Funding tiers range from average to huge. A huge main brand with excellent secondary sponsors can buy elite staff and drivers. An average main brand can still create a dominant short era through a brilliant principal, strong sponsor portfolio and an early signing of an undervalued prospect.
+
+Secondary sponsor income depends on:
+
+```text
+base sponsor value
+× team-principal commercial negotiation
+× constructor prestige and results
+× driver commercial value
+× driver/sponsor nationality links
+```
+
+A driver from India, Japan, Brazil or another market can improve access to sponsors from that country. This is a financial advantage, not an automatic sporting bonus.
+
+Team finances show main-brand funding, secondary sponsor income, prize money, driver cost, staff cost, engine cost, development spending, cash and projected balance. Financial pressure affects recruitment and makes vulnerable entries candidates for acquisition or replacement.
+
+## Dynamic constructor world
+
+Constructor change is conservative rather than yearly chaos.
+
+- Ferrari and a small group of heritage institutions are protected
+- Vulnerable non-protected entries may leave after several seasons
+- An unused main brand can acquire the grid slot and inherit its sporting lineage
+- New ownership changes name, colors, funding, livery and commercial expectations
+- Engines and sponsor portfolios can change without destroying the team's historical continuity
+- At most a small number of entries change in an off-season
+
+This allows Red Bull to leave one era, Lamborghini or BMW to enter another, and an average-funded organization to become temporarily elite without turning the grid into random annual churn.
+
+## Calendar, history and GOAT systems
 
 - Protected classics such as Monaco, Monza, Silverstone and Spa
-- Conservative calendar rotation from an international reserve pool
-- One controlled change in a typical off-season rather than constant churn
-- Permanent team lineage, livery, staff and driver histories
-- Compressed race archives with winners, podiums, weather, interventions and fastest laps
-- Awards for F1 and support-series champions, wet-weather performance, qualifying, overtaking, pit crews and innovation
-- Transparent GOAT modes for F1 legacy, all motorsport, peak and longevity
+- Conservative rotation from an international reserve pool
+- Permanent race, driver, team, livery and staff histories
+- Awards for F1 and feeder champions, qualifying, wet-weather performances, overtaking, pit crews and innovation
+- Driver and constructor records
+- Multiple transparent GOAT rankings for F1 legacy, all-motorsport achievement, peak and longevity
+- Team lineage that survives ownership and identity changes
 
-### Interface and saves
-
-- F1-inspired responsive navigation
-- Home, Schedule, Weekend, Results, Standings, Drivers, Teams, Paddock, World, Almanac and More
-- Driver, team and circuit profile overlays
-- Paddock magazine stories generated from sporting, technical, commercial and market events
-- Three IndexedDB save slots, autosave, delete, JSON export and JSON import
-- Commissioner settings for calendar churn, team dynamism, authenticity and autosave
-
-## Important design rule
-
-The game separates intrinsic quality from circumstances:
+## Core performance rule
 
 ```text
 Effective performance = fixed base talent
@@ -114,17 +189,19 @@ Effective performance = fixed base talent
                       + car, circuit, weather, strategy and operational context
 ```
 
-A Generational driver remains Generational. They can still lose through an inferior car, bad strategy, reliability, weather timing or a poor career year, but the simulation does not silently rewrite their underlying rarity.
+Rarity never changes. Results do not simply follow rarity either: machinery, strategy, development, reliability, weather and career timing determine whether talent becomes a legendary career or a famous disappointment.
 
 ## Project structure
 
 ```text
-src/data.js       universe generation, teams, drivers, staff, sponsors and circuits
-src/sim.js        sessions, races, standings, stories, awards and off-season evolution
-src/storage.js    IndexedDB slots and JSON import/export
-src/main.jsx      application pages, tables, profiles and controls
-src/styles.css    responsive F1-inspired visual system
-scripts/smoke.mjs multi-season deterministic integrity test
+src/data.js       universe generation, categories, brands, sponsors, drivers and staff
+src/sim.js        sessions, races, markets, finances, history and off-season evolution
+src/storage.js    IndexedDB universe slots and JSON import/export
+src/main.jsx      launcher, navigation, competition pages, databases and profiles
+src/styles.css    responsive F1-inspired visual system and procedural liveries
+scripts/smoke.mjs deterministic multi-season integrity test
+vite.config.js    relative production paths for GitHub Pages
+.github/workflows/deploy-pages.yml automated build and Pages deployment
 ```
 
-See `IMPLEMENTATION.md` for the design-document coverage map and current prototype boundaries.
+See `IMPLEMENTATION.md` for the detailed design-coverage map and current prototype boundaries.

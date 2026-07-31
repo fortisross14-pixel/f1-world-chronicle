@@ -19,8 +19,9 @@ for (let season = 0; season < 3; season += 1) {
   universe = advanceToNextSeason(universe);
   assert.equal(universe.phase, 'Pre-season');
   assert.equal(universe.seasonArchive.length, season + 1);
+  assert.ok(universe.seasonArchive.at(-1).series.F4.championId);
 
-  const expected = { F1: 22, F2: 20, F3: 20, FE: 22, WEC: 24 };
+  const expected = { F1: 22, F2: 20, F3: 20, F4: 24, FE: 22, WEC: 24 };
   for (const [series, count] of Object.entries(expected)) {
     const active = universe.drivers.filter((driver) => driver.active && driver.series === series && driver.role === 'Race driver').length;
     assert.equal(active, count, `${series} grid should remain full`);
