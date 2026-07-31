@@ -52,6 +52,43 @@ function driverLevel(driver, key, weather='Dry') {
   const wet = driver.skills?.wet ?? driver.baseTalent;
   return (core*(1-wetWeight)+wet*wetWeight)*careerMultiplier(driver)*driver.annualForm + (driver.confidence-60)*.07;
 }
+export function driverCircuitSpecialtyScore(driver,event,weather='Dry'){
+  const traits=event?.traits||{};let raw=0;
+  switch(driver?.trackSpecialty){
+    case 'High-speed circuits':raw=(traits.high||70)-72;break;
+    case 'Technical circuits':raw=(traits.low||70)-72;break;
+    case 'Power circuits':raw=(traits.straight||70)-72;break;
+    case 'Street circuits':raw=(traits.street||0)-58;break;
+    case 'Tyre-limited circuits':raw=(traits.tyre||70)-72;break;
+    case 'Wet weather':raw=weather==='Wet'?34:weather==='Damp'?18:-4;break;
+    default:raw=6;
+  }
+  return clamp(raw/7,-3.5,5.2);
+}
+function thermalConditionLabel(temperature){
+  if(temperature>=36)return 'Extreme heat';
+  if(temperature>=32)return 'Very hot';
+  if(temperature<=12)return 'Very cold';
+  if(temperature<=17)return 'Cold';
+  return 'Normal';
+}
+function thermalDriverScore(driver,temperature=24){
+  if(temperature>=32){
+    const management=(driver.skills.tyre*.52+driver.skills.consistency*.28+driver.skills.composure*.20);
+    const specialty=driver.trackSpecialty==='Tyre-limited circuits'?1.5:0;
+    return clamp((management-78)/7+specialty, -2.5, 4.5);
+  }
+  if(temperature<=17){
+    const warmup=(driver.skills.oneLap*.38+driver.skills.starts*.27+driver.adaptability*.20+driver.skills.composure*.15);
+    return clamp((warmup-78)/8,-2.2,3.8);
+  }
+  return 0;
+}
+function recentWinPressure(universe,driverId){
+  const completed=(universe.competitionEventResults?.F1||[]).slice(-5);
+  let streak=0;for(let i=completed.length-1;i>=0;i-=1){if(completed[i].winnerId===driverId)streak+=1;else break;}
+  return streak>=4?-5.2:streak===3?-2.8:streak===2?-1.1:0;
+}
 function observedDriverValue(driver) {
   const skills=Object.values(driver.skills||{pace:driver.baseTalent});
   const visibleSkill=avg(skills);
@@ -100,9 +137,10 @@ function weatherForSession(event, sessionKey, rng) {
   if(roll<base*.27) state='Wet'; else if(roll<base) state='Damp';
   const forecastAccuracy=clamp(.58+rng.next()*.33,.58,.91);
   const forecastChance=Math.round(clamp((base+(rng.next()-.5)*(1-forecastAccuracy)*.45)*100,1,94));
-  const temperature=Math.round(event.temp+(rng.next()-.5)*7);
+  const swing=event.temp>=30?11:event.temp<=18?9:7;
+  const temperature=Math.round(event.temp+(rng.next()-.5)*swing);
   const wind=Math.round(5+rng.next()*24);
-  return {state,forecastChance,temperature,wind,accuracy:Math.round(forecastAccuracy*100),summary:state==='Dry'?(forecastChance>35?'Dry, rain nearby':'Dry'):state==='Damp'?'Intermittent rain':'Heavy rain'};
+  return {state,forecastChance,temperature,thermal:thermalConditionLabel(temperature),wind,accuracy:Math.round(forecastAccuracy*100),summary:state==='Dry'?(forecastChance>35?'Dry, rain nearby':'Dry'):state==='Damp'?'Intermittent rain':'Heavy rain'};
 }
 
 function raceWeatherTimeline(event, weather, rng, segments=8) {
@@ -150,7 +188,7 @@ function simulatePractice(universe,event,session,rng) {
     const driverFeedback=driver.skills.feedback;
     const fit=carFit(universe,team,event,'practice');
     const weather=session.weather.state;
-    const score=fit*.52+driverLevel(driver,'racePace',weather)*.32+driverFeedback*.08+setupDirector*.08+(rng.next()-.5)*5;
+    const score=fit*.50+driverLevel(driver,'racePace',weather)*.30+driverFeedback*.08+setupDirector*.08+driverCircuitSpecialtyScore(driver,event,weather)+thermalDriverScore(driver,session.weather.temperature)*.75+(rng.next()-.5)*6.4;
     const testWork=testDriverContribution(universe,team);
     const setupGain=clamp((driverFeedback+setupDirector+team.facilities.simulator+testWork)/400*.95+rng.next()*.42,0.25,1.35);
     team.weekendSetup=clamp((team.weekendSetup||0)+setupGain/3,0,2.8);
@@ -162,7 +200,7 @@ function simulatePractice(universe,event,session,rng) {
   return {kind:'Practice',rows,headline:surprise?`${getDriver(universe,surprise.driverId).name} puts a midfield car into the top five`:`${getDriver(universe,rows[0].driverId).name} sets the early pace`,events:rows.filter((row)=>row.issue).map((row)=>({type:'Issue',text:`${getDriver(universe,row.driverId).name}: ${row.issue}`}))};
 }
 
-function qualifyingRun(universe,event,drivers,weather,roundName,rng,cut) {
+function qualifyingRun(universe,event,drivers,weather,temperature,roundName,rng,cut) {
   const rows=drivers.map((driver)=>{
     const team=getTeam(universe,driver.teamId);
     const strategy=teamStaffRating(universe,team,'Head of Strategy');
@@ -170,7 +208,7 @@ function qualifyingRun(universe,event,drivers,weather,roundName,rng,cut) {
     const runTiming=(strategy-70)*.025+(rng.next()-.5)*2.2;
     const trafficPenalty=rng.chance(roundName==='Q1'?.12:.06)?rng.next()*2.1:0;
     const deleted=rng.chance(clamp((96-driver.skills.consistency)/850,0.003,.045));
-    const score=carFit(universe,team,event,'qualifying')*.52+driverLevel(driver,'oneLap',weather)*.42+driver.skills.composure*.04+runTiming+trackEvolution-trafficPenalty+(rng.next()-.5)*2.8;
+    const score=carFit(universe,team,event,'qualifying')*.47+driverLevel(driver,'oneLap',weather)*.39+driver.skills.composure*.04+driverCircuitSpecialtyScore(driver,event,weather)*1.15+thermalDriverScore(driver,temperature)*.65+runTiming+trackEvolution-trafficPenalty+(rng.next()-.5)*4.2;
     return {driverId:driver.id,teamId:team.id,score,time:lapTimeFromScore(score,event,'Qualifying',rng)+(deleted?.75:0),deleted,compound:'Soft'};
   }).sort((a,b)=>a.time-b.time);
   const leader=rows[0].time;
@@ -181,9 +219,9 @@ function qualifyingRun(universe,event,drivers,weather,roundName,rng,cut) {
 function simulateQualifying(universe,event,session,rng) {
   const all=currentF1Drivers(universe);
   const weather=session.weather.state;
-  const q1=qualifyingRun(universe,event,all,weather,'Q1',rng,15);
-  const q2=qualifyingRun(universe,event,q1.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId)),weather,'Q2',rng,10);
-  const q3=qualifyingRun(universe,event,q2.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId)),weather,'Q3',rng,10);
+  const q1=qualifyingRun(universe,event,all,weather,session.weather.temperature,'Q1',rng,15);
+  const q2=qualifyingRun(universe,event,q1.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId)),weather,session.weather.temperature,'Q2',rng,10);
+  const q3=qualifyingRun(universe,event,q2.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId)),weather,session.weather.temperature,'Q3',rng,10);
   const eliminatedQ1=q1.slice(15).sort((a,b)=>a.time-b.time);
   const eliminatedQ2=q2.slice(10).sort((a,b)=>a.time-b.time);
   const final=[...q3,...eliminatedQ2,...eliminatedQ1].map((row,index)=>({...row,position:index+1}));
@@ -204,11 +242,12 @@ function tyreForState(state,aggression=false) {
 function strategyQuality(universe,driver,team) {
   return teamStaffRating(universe,team,'Head of Strategy')*.52+team.car.operations*.2+driver.skills.tyre*.18+driver.skills.composure*.1;
 }
-function reliabilityRisk(universe,driver,team,event,rng,isSprint=false) {
+function reliabilityRisk(universe,driver,team,event,rng,isSprint=false,temperature=24) {
   const engine=getEngine(universe,team.engineId);
   const reliability=team.car.reliability*.5+(engine?.reliability||82)*.35+driver.skills.sympathy*.15;
   const stress=(event.traits.tyre+event.traits.high)/200;
-  return clamp((101-reliability)/130*(isSprint?.35:1)*(0.7+stress*.5)+(rng.next()-.5)*.015,.004,.18);
+  const thermalStress=temperature>=34?(temperature-33)*.012:temperature<=13?(14-temperature)*.004:0;
+  return clamp((101-reliability)/130*(isSprint?.35:1)*(0.7+stress*.5)+thermalStress+(rng.next()-.5)*.015,.004,.22);
 }
 
 function simulateRace(universe,event,session,rng,isSprint=false) {
@@ -251,16 +290,17 @@ function simulateRace(universe,event,session,rng,isSprint=false) {
       }
       tyreAge+=1;
       const fit=carFit(universe,team,event,'race');
-      const pace=fit*.46+driverLevel(driver,'racePace',track)*.34+driver.skills.racecraft*.1+driver.skills.tyre*.06+driver.skills.consistency*.04;
+      const pace=fit*.41+driverLevel(driver,'racePace',track)*.31+driver.skills.racecraft*.09+driver.skills.tyre*.055+driver.skills.consistency*.035+driverCircuitSpecialtyScore(driver,event,track)*1.3+thermalDriverScore(driver,session.weather.temperature)*1.05+recentWinPressure(universe,driver.id);
       let tyrePenalty=0;
       if((track==='Wet'&&previousTyre!=='Wet')||(track==='Damp'&&!['Intermediate','Wet'].includes(previousTyre))) tyrePenalty=12;
       if(track==='Dry'&&['Intermediate','Wet'].includes(previousTyre)) tyrePenalty=7;
-      const degradation=Math.max(0,(event.traits.tyre-driver.skills.tyre)*.035*tyreAge);
+      const heatLoad=Math.max(0,(session.weather.temperature||24)-30)*.055;
+      const degradation=Math.max(0,((event.traits.tyre-driver.skills.tyre)*.035+heatLoad)*tyreAge);
       const traffic=(state.virtualPos>8?event.traits.overtake<55?1.4:.4:0);
-      const variability=(rng.next()-.5)*(8-driver.skills.consistency/18);
+      const variability=(rng.next()-.5)*(12-driver.skills.consistency/15);
       totalPerformance+=pace-tyrePenalty-degradation-traffic+variability;
       state.time+=(lapEnd-lapStart+1)*(96-(pace-70)*.24)+tyrePenalty+degradation;
-      if(state.status==='Running' && rng.chance(reliabilityRisk(universe,driver,team,event,rng,isSprint)/segments)){
+      if(state.status==='Running' && rng.chance(reliabilityRisk(universe,driver,team,event,rng,isSprint,session.weather.temperature)/segments)){
         state.status='DNF'; state.lapsCompleted=Math.max(2,lapEnd-rng.int(1,4)); state.tags.push('Mechanical DNF');
         const reason=rng.pick(['power unit failure','hydraulic failure','gearbox failure','electrical shutdown','overheating']);
         state.events.push({lap:state.lapsCompleted,type:'Retirement',text:`${driver.name} retires with ${reason}`}); raceEvents.push(state.events.at(-1));
@@ -290,11 +330,14 @@ function simulateRace(universe,event,session,rng,isSprint=false) {
       const pair=states.filter((state)=>state.teamId===team.id&&state.status==='Running');
       if(pair.length!==2)return;
       const [a,b]=pair; const da=getDriver(universe,a.driverId); const db=getDriver(universe,b.driverId);
-      const contender=da.season.points>=db.season.points?{state:a,driver:da,other:b,otherDriver:db}:{state:b,driver:db,other:a,otherDriver:da};
+      const leadDriver=da.seat===1?da:db.seat===1?db:null;
+      const leadState=leadDriver?.id===da.id?a:leadDriver?.id===db.id?b:null;
+      const sportingPriority=leadDriver&&Math.max(da.season.points,db.season.points)-leadDriver.season.points<28;
+      const contender=sportingPriority?{state:leadState,driver:leadDriver,other:leadState===a?b:a,otherDriver:leadState===a?db:da}:(da.season.points>=db.season.points?{state:a,driver:da,other:b,otherDriver:db}:{state:b,driver:db,other:a,otherDriver:da});
       const gap=contender.state.time-contender.other.time;
       const principal=team.staffIds.map((id)=>getStaff(universe,id)).find((member)=>member?.role==='Team Principal');
       const orderChance=clamp(.38+(principal?.rating||75)/250+(team.finances.pressure||40)/300,.45,.9);
-      if(gap>0&&gap<6&&contender.driver.season.points-contender.otherDriver.season.points>=15&&rng.chance(orderChance)){
+      if(gap>0&&gap<6&&(contender.driver.seat===1||contender.driver.season.points-contender.otherDriver.season.points>=15)&&rng.chance(orderChance)){
         const previous=contender.other.time; contender.state.time=previous-.15; contender.other.time+=1.25;
         contender.state.tags.push('Team-order priority'); contender.other.tags.push('Team order obeyed');
         const order={lap:Math.max(1,laps-rng.int(3,10)),type:'Team Order',text:`${team.name} asks ${contender.otherDriver.name} to release title contender ${contender.driver.name}`};
@@ -335,7 +378,8 @@ function simulateRace(universe,event,session,rng,isSprint=false) {
   const winnerTeam=getTeam(universe,winner.teamId);
   if(!isSprint&&winnerTeam){winnerTeam.staffIds.map((id)=>getStaff(universe,id)).filter(Boolean).forEach((member)=>{member.wins=(member.wins||0)+1;});}
   const fastest=[...sorted].filter((state)=>state.status==='Running').sort((a,b)=>b.paceScore-a.paceScore)[0];
-  if(!isSprint&&fastest){universe.records.fastestLaps.unshift({year:universe.year,round:event.round,eventId:event.id,driverId:fastest.driverId,driverName:getDriver(universe,fastest.driverId).name});universe.records.fastestLaps=universe.records.fastestLaps.slice(0,120);}
+  const fastestLapTime=fastest?Number(Math.max(45,lapTimeFromScore(fastest.paceScore+5,event,'Race',rng)-2.4).toFixed(3)):null;
+  if(!isSprint&&fastest){universe.records.fastestLaps.unshift({year:universe.year,series:'F1',round:event.round,eventId:event.id,circuitId:event.circuitId||event.id,driverId:fastest.driverId,driverName:getDriver(universe,fastest.driverId).name,time:fastestLapTime});universe.records.fastestLaps=universe.records.fastestLaps.slice(0,240);}
   if(!isSprint&&winner){
     const priorYoungest=universe.records.youngestWins[0];
     if(!priorYoungest||winner.age<priorYoungest.age){universe.records.youngestWins.unshift({year:universe.year,eventId:event.id,driverId:winner.id,driverName:winner.name,age:winner.age});}
@@ -345,7 +389,7 @@ function simulateRace(universe,event,session,rng,isSprint=false) {
   const biggestGain=[...sorted].sort((a,b)=>(b.grid-b.position)-(a.grid-a.position))[0];
   if(biggestGain && biggestGain.grid-biggestGain.position>=6) biggestGain.tags.push('Comeback drive');
   const weatherChanged=new Set(timeline).size>1;
-  return {kind:isSprint?'Sprint':'Race',rows:sorted,grid,timeline,laps,safetyCar,virtualSafetyCar,redFlag,teamOrders,fastestLapDriverId:fastest?.driverId||null,events:raceEvents.sort((a,b)=>a.lap-b.lap).slice(0,20),headline:`${winner.name} wins ${isSprint?'the Sprint':`the ${event.country} Grand Prix`}${weatherChanged?' after changing conditions':''}`,winnerId:winner.id};
+  return {kind:isSprint?'Sprint':'Race',rows:sorted,grid,timeline,laps,safetyCar,virtualSafetyCar,redFlag,teamOrders,fastestLapDriverId:fastest?.driverId||null,fastestLapTime,events:raceEvents.sort((a,b)=>a.lap-b.lap).slice(0,20),headline:`${winner.name} wins ${isSprint?'the Sprint':`the ${event.country} Grand Prix`}${weatherChanged?' after changing conditions':''}`,winnerId:winner.id};
 }
 
 function createStory(universe,{category,headline,dek,priority=70,subjects=[],thread=null,round=null}){
@@ -373,13 +417,87 @@ function resultStory(universe,event,session,result){
   if(dnf){const d=getDriver(universe,dnf.driverId);createStory(universe,{category:'After the Flag',headline:`Reliability stops ${d.name}, not raw pace`,dek:`The Generational ceiling remains intact, but another lost result can reshape the title fight. Greatness can be delayed by machinery without being erased.`,priority:86,subjects:[d.id,d.teamId],thread:'title-rivalry',round:event.round});}
 }
 
-function simulateFeederRound(universe,series,seed){
-  const rng=makeRng(seed+series.charCodeAt(1)*271); const drivers=universe.drivers.filter((driver)=>driver.series===series&&driver.role==='Race driver'&&driver.active); const teams=universe.feederTeams[series];
-  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const experiencePenalty=driver.age<18?2.5:0;const score=driver.baseTalent*careerMultiplier(driver)*.68+(team?.rating||75)*.25+driver.skills.racecraft*.07-experiencePenalty+(rng.next()-.5)*8;return{driverId:driver.id,teamId:driver.teamId,score};}).sort((a,b)=>b.score-a.score);
-  const points=series==='FE'?[25,18,15,12,10,8,6,4,2,1]:[25,18,15,12,10,8,6,4,2,1];
-  rows.forEach((row,index)=>{row.position=index+1;row.points=points[index]||0;const driver=getDriver(universe,row.driverId);driver.season.points+=row.points;driver.season.wins+=index===0?1:0;driver.season.podiums+=index<3?1:0;driver.season.starts+=1;driver.season.form.push(index+1);driver.season.form=driver.season.form.slice(-5);const team=teams.find((item)=>item.id===row.teamId);if(team){team.points+=row.points;team.wins+=index===0?1:0;}});
-  universe.feederResults[series].push({year:universe.year,round:universe.currentRound+1,rows,winnerId:rows[0].driverId});
+function genericTeamFit(team,event){
+  const profile=team?.carProfile||{high:team?.rating||72,low:team?.rating||72,straight:team?.rating||72,tyre:team?.rating||72,reliability:team?.rating||72};
+  const traits=event.traits||{};
+  const weighted=profile.high*(traits.high||70)+profile.low*(traits.low||70)+profile.straight*(traits.straight||70)+profile.tyre*(traits.tyre||70);
+  const denominator=(traits.high||70)+(traits.low||70)+(traits.straight||70)+(traits.tyre||70);
+  return weighted/Math.max(1,denominator);
+}
+function formatSessionRows(rows){
+  const leader=rows[0]?.time||0;
+  rows.forEach((row,index)=>{row.position=index+1;row.gap=index===0?'—':`+${(row.time-leader).toFixed(3)}`;});
   return rows;
+}
+function simulateSupportPractice(universe,series,event,drivers,teams,weather,rng,label){
+  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const score=genericTeamFit(team,event)*.42+driverLevel(driver,'racePace',weather.state)*.38+driver.skills.feedback*.08+driverCircuitSpecialtyScore(driver,event,weather.state)*1.2+thermalDriverScore(driver,weather.temperature)*.75+(rng.next()-.5)*7;return{driverId:driver.id,teamId:driver.teamId,time:lapTimeFromScore(score,event,'Practice',rng),laps:rng.int(18,34),compound:rng.pick(['Soft','Medium','Hard']),points:0};}).sort((a,b)=>a.time-b.time);
+  return{key:label,label:label==='FP1'?'Friday Practice 1':'Friday Practice 2',weather:weather.state,temperature:weather.temperature,thermal:weather.thermal,rows:formatSessionRows(rows)};
+}
+function supportQualifyingRound(universe,event,drivers,teams,weather,rng,key,cut){
+  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const score=genericTeamFit(team,event)*.43+driverLevel(driver,'oneLap',weather.state)*.42+driver.skills.composure*.05+driverCircuitSpecialtyScore(driver,event,weather.state)*1.25+thermalDriverScore(driver,weather.temperature)*.65+(rng.next()-.5)*5.4;return{driverId:driver.id,teamId:driver.teamId,time:lapTimeFromScore(score,event,'Qualifying',rng),points:0};}).sort((a,b)=>a.time-b.time);
+  formatSessionRows(rows);rows.forEach((row,index)=>{row.advanced=index<cut;});return{key,label:key,weather:weather.state,temperature:weather.temperature,thermal:weather.thermal,rows};
+}
+function simulateSupportRace(universe,series,event,drivers,teams,grid,weather,rng){
+  const points=GRAND_PRIX_POINTS;const laps=series==='WEC'?Math.round(90+event.traits.high/2):Math.round(34+event.traits.low/4);
+  const timeline=raceWeatherTimeline(event,weather,rng,series==='WEC'?10:7);
+  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const gridPos=Math.max(1,grid.indexOf(driver.id)+1);const specialty=avg(timeline.map((state)=>driverCircuitSpecialtyScore(driver,event,state)));const pace=genericTeamFit(team,event)*.39+driverLevel(driver,'racePace',timeline.some((s)=>s==='Wet')?'Wet':timeline.some((s)=>s==='Damp')?'Damp':'Dry')*.37+driver.skills.racecraft*.10+driver.skills.tyre*.06+specialty*1.25+thermalDriverScore(driver,weather.temperature)*1.05+(rng.next()-.5)*8;const reliability=team?.carProfile?.reliability||team?.rating||72;const dnf=rng.chance(clamp((94-reliability)/230+(95-driver.skills.consistency)/600+(timeline.includes('Wet')?.025:0)+Math.max(0,weather.temperature-33)*.008,.01,.21));const raceTime=laps*(96-(pace-70)*.22)+(gridPos-1)*.12+(rng.next()-.5)*12;return{driverId:driver.id,teamId:driver.teamId,grid:gridPos,score:pace,time:raceTime,status:dnf?'DNF':'Running',lapsCompleted:dnf?Math.max(3,laps-rng.int(2,18)):laps,points:0};});
+  const running=rows.filter((row)=>row.status==='Running').sort((a,b)=>a.time-b.time);const retired=rows.filter((row)=>row.status!=='Running').sort((a,b)=>b.lapsCompleted-a.lapsCompleted);const ordered=[...running,...retired];const leader=running[0]?.time||ordered[0]?.time||0;
+  ordered.forEach((row,index)=>{row.position=index+1;row.points=row.status==='Running'?(points[index]||0):0;row.gap=index===0?seconds(leader):row.status==='Running'?`+${(row.time-leader).toFixed(3)}s`:`DNF (${row.lapsCompleted} laps)`;const driver=getDriver(universe,row.driverId);driver.season.points+=row.points;driver.season.wins+=index===0?1:0;driver.season.podiums+=index<3?1:0;driver.season.starts+=1;driver.season.dnfs+=row.status!=='Running'?1:0;driver.season.form.push(index+1);driver.season.form=driver.season.form.slice(-5);driver.confidence=clamp(driver.confidence+(index<3?2:index>15?-1:0),30,96);const team=teams.find((item)=>item.id===row.teamId);if(team){team.points=(team.points||0)+row.points;team.wins=(team.wins||0)+(index===0?1:0);}});
+  const fastest=[...running].sort((a,b)=>b.score-a.score)[0];const fastestLapTime=fastest?Number(Math.max(45,lapTimeFromScore(fastest.score+4,event,'Race',rng)-1.8).toFixed(3)):null;
+  if(fastest){universe.records.fastestLaps.unshift({year:universe.year,series,round:event.round,eventId:event.id,circuitId:event.circuitId||event.id,driverId:fastest.driverId,driverName:getDriver(universe,fastest.driverId)?.name,time:fastestLapTime});universe.records.fastestLaps=universe.records.fastestLaps.slice(0,240);}
+  return{key:'R',label:series==='WEC'?'Endurance Race':'Race',weather:weather.state,temperature:weather.temperature,thermal:weather.thermal,timeline,laps,rows:ordered,winnerId:ordered[0]?.driverId,fastestLapDriverId:fastest?.driverId||null,fastestLapTime};
+}
+function simulateFeederRound(universe,series,seed){
+  const results=universe.competitionEventResults?.[series]||[];const calendar=universe.competitionCalendars?.[series]||[];const event=calendar[results.length];if(!event)return null;
+  const rng=makeRng(seed+series.charCodeAt(1)*271+event.round*919);const drivers=universe.drivers.filter((driver)=>driver.series===series&&driver.role==='Race driver'&&driver.active);const teams=universe.feederTeams[series]||[];
+  const fp1Weather=weatherForSession(event,'FP1',rng);const fp2Weather=weatherForSession(event,'FP2',rng);const qWeather=weatherForSession(event,'Q',rng);const raceWeather=weatherForSession(event,'R',rng);
+  const fp1=simulateSupportPractice(universe,series,event,drivers,teams,fp1Weather,rng,'FP1');const fp2=simulateSupportPractice(universe,series,event,drivers,teams,fp2Weather,rng,'FP2');
+  const q1Cut=Math.max(10,drivers.length-5);const q2Cut=Math.max(8,Math.min(12,q1Cut-5));const q3Cut=Math.min(10,q2Cut);
+  const q1=supportQualifyingRound(universe,event,drivers,teams,qWeather,rng,'Q1',q1Cut);const q2Drivers=q1.rows.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId));const q2=supportQualifyingRound(universe,event,q2Drivers,teams,qWeather,rng,'Q2',q2Cut);const q3Drivers=q2.rows.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId));const q3=supportQualifyingRound(universe,event,q3Drivers,teams,qWeather,rng,'Q3',q3Cut);
+  const finalQualifying=[...q3.rows,...q2.rows.slice(q2Cut),...q1.rows.slice(q1Cut)].map((row,index)=>({...row,position:index+1}));const pole=getDriver(universe,finalQualifying[0]?.driverId);if(pole){pole.season.poles=(pole.season.poles||0)+1;}
+  const race=simulateSupportRace(universe,series,event,drivers,teams,finalQualifying.map((row)=>row.driverId),raceWeather,rng);const winner=getDriver(universe,race.winnerId);const winnerTeam=getTeam(universe,winner?.teamId);
+  const record={id:`${universe.year}-${series}-${event.round}`,year:universe.year,series,eventId:event.id,circuitId:event.circuitId||event.id,round:event.round,event:{id:event.id,circuitId:event.circuitId||event.id,country:event.country,city:event.city,name:event.name,traits:event.traits,rain:event.rain,temp:event.temp},sessions:{FP1:fp1,FP2:fp2,Q1:q1,Q2:q2,Q3:q3,R:race},winnerId:winner?.id||null,teamWinnerId:winnerTeam?.id||null,poleId:pole?.id||null,podium:race.rows.slice(0,3).map((row)=>({driverId:row.driverId,teamId:row.teamId,position:row.position})),fastestLapDriverId:race.fastestLapDriverId,fastestLapTime:race.fastestLapTime,weather:{qualifying:qWeather.state,qualifyingTemperature:qWeather.temperature,race:raceWeather.state,raceTemperature:raceWeather.temperature,timeline:race.timeline}};
+  universe.competitionEventResults[series].push(record);universe.feederResults[series].push({year:universe.year,round:event.round,eventId:event.id,rows:race.rows,winnerId:record.winnerId});event.status='Complete';
+  if(winner)createStory(universe,{category:'World Results',headline:`${winner.name} wins the ${event.name} in ${series}`,dek:`${winnerTeam?.name||'The winning entrant'} converted P${race.rows[0]?.grid||'—'} on the grid into victory. ${race.timeline.some((state)=>state!=='Dry')?'Changing conditions made wet skill and strategy decisive.':`${winner.trackSpecialty} suited the circuit profile.`}`,priority:series==='F2'?74:60,subjects:[winner.id,winnerTeam?.id].filter(Boolean),round:event.round});
+  return record;
+}
+
+function buildF1EventRecord(universe,event,raceResult){
+  const all=universe.sessionResults.filter((result)=>result.year===universe.year&&result.eventId===event.id);
+  const byKey=Object.fromEntries(all.map((result)=>[result.sessionKey,result]));
+  const qualifying=byKey.Q?.data||byKey.SQ?.data;
+  const race=raceResult.data;
+  const winner=getDriver(universe,race.winnerId);
+  const winnerTeam=getTeam(universe,winner?.teamId);
+  const session=(key,label,rows,weather,extra={})=>({key,label,weather:weather?.state,temperature:weather?.temperature,thermal:weather?.thermal,rows:rows||[],...extra});
+  const sessions={};
+  if(byKey.FP1)sessions.FP1=session('FP1','Friday Practice 1',byKey.FP1.data?.rows,byKey.FP1.weather);
+  if(byKey.FP2)sessions.FP2=session('FP2','Friday Practice 2',byKey.FP2.data?.rows,byKey.FP2.weather);
+  if(byKey.FP3)sessions.FP3=session('FP3','Practice 3',byKey.FP3.data?.rows,byKey.FP3.weather);
+  if(byKey.SQ){
+    sessions.SQ1=session('SQ1','Sprint Qualifying 1',byKey.SQ.data?.rounds?.Q1,byKey.SQ.weather);
+    sessions.SQ2=session('SQ2','Sprint Qualifying 2',byKey.SQ.data?.rounds?.Q2,byKey.SQ.weather);
+    sessions.SQ3=session('SQ3','Sprint Qualifying 3',byKey.SQ.data?.rounds?.Q3,byKey.SQ.weather);
+  }
+  if(byKey.S)sessions.S=session('S','Sprint',byKey.S.data?.rows,byKey.S.weather,{timeline:byKey.S.data?.timeline,laps:byKey.S.data?.laps});
+  if(byKey.Q){
+    sessions.Q1=session('Q1','Q1',byKey.Q.data?.rounds?.Q1,byKey.Q.weather);
+    sessions.Q2=session('Q2','Q2',byKey.Q.data?.rounds?.Q2,byKey.Q.weather);
+    sessions.Q3=session('Q3','Q3',byKey.Q.data?.rounds?.Q3,byKey.Q.weather);
+  }else if(byKey.SQ){
+    sessions.Q1=session('Q1','Q1',byKey.SQ.data?.rounds?.Q1,byKey.SQ.weather);
+    sessions.Q2=session('Q2','Q2',byKey.SQ.data?.rounds?.Q2,byKey.SQ.weather);
+    sessions.Q3=session('Q3','Q3',byKey.SQ.data?.rounds?.Q3,byKey.SQ.weather);
+  }
+  sessions.R=session('R','Grand Prix',race.rows,byKey.R?.weather,{timeline:race.timeline,laps:race.laps});
+  return{
+    id:`${universe.year}-F1-${event.round}`,year:universe.year,series:'F1',eventId:event.id,circuitId:event.circuitId||event.id,round:event.round,
+    event:{id:event.id,circuitId:event.circuitId||event.id,country:event.country,city:event.city,name:event.name,traits:event.traits,rain:event.rain,temp:event.temp},
+    sessions,winnerId:winner?.id||null,teamWinnerId:winnerTeam?.id||null,poleId:qualifying?.rows?.[0]?.driverId||null,
+    podium:race.rows.slice(0,3).map((row)=>({driverId:row.driverId,teamId:row.teamId,position:row.position})),
+    fastestLapDriverId:race.fastestLapDriverId,fastestLapTime:race.fastestLapTime,
+    weather:{qualifying:byKey.Q?.weather?.state||byKey.SQ?.weather?.state,qualifyingTemperature:byKey.Q?.weather?.temperature||byKey.SQ?.weather?.temperature,race:byKey.R?.weather?.state,raceTemperature:byKey.R?.weather?.temperature,timeline:race.timeline},
+  };
 }
 
 function applyDevelopment(universe,event,rng){
@@ -448,6 +566,8 @@ export function simulateNextSession(sourceUniverse){
   resultStory(universe,event,session,data);
   if(session.type==='Race'){
     universe.raceResults.push(result); event.status='Complete';
+    universe.competitionEventResults=universe.competitionEventResults||{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]};
+    universe.competitionEventResults.F1.push(buildF1EventRecord(universe,event,result));
     maybeCreateDriverInjury(universe,data,rng);
     ['F2','F3','F4'].forEach((series)=>simulateFeederRound(universe,series,event.weekendSeed+universe.year));
     if(event.round%2===0) simulateFeederRound(universe,'FE',event.weekendSeed+universe.year+57);
@@ -541,12 +661,12 @@ function resetSeasonStats(entity){
 }
 function resetTeamSeason(team){team.season={points:0,wins:0,poles:0,podiums:0,dnfs:0,pitScore:0,strategyScore:0,development:0};team.weekendSetup=0;}
 
-function moveDriver(universe,driver,newSeries,newTeamId,role='Race driver'){
+function moveDriver(universe,driver,newSeries,newTeamId,role='Race driver',seat=null){
   const oldTeam=getTeam(universe,driver.teamId);
   if(oldTeam?.driverIds) oldTeam.driverIds=oldTeam.driverIds.filter((id)=>id!==driver.id);
   if(oldTeam?.reserveIds) oldTeam.reserveIds=oldTeam.reserveIds.filter((id)=>id!==driver.id);
   if(oldTeam?.testDriverIds) oldTeam.testDriverIds=oldTeam.testDriverIds.filter((id)=>id!==driver.id);
-  driver.series=newSeries;driver.teamId=newTeamId;driver.role=role;driver.rookie=newSeries==='F1'&&role==='Race driver';
+  driver.series=newSeries;driver.teamId=newTeamId;driver.role=role;driver.seat=(role==='Test driver'||role==='Reserve driver')?3:(seat??(role==='Race driver'?Math.max(1,driver.seat||1):0));driver.rookie=newSeries==='F1'&&role==='Race driver';
   const newTeam=getTeam(universe,newTeamId);
   if(role==='Race driver'&&newTeam?.driverIds&&!newTeam.driverIds.includes(driver.id))newTeam.driverIds.push(driver.id);
   if(role==='Reserve driver'&&newTeam?.reserveIds&&!newTeam.reserveIds.includes(driver.id))newTeam.reserveIds.push(driver.id);
@@ -581,30 +701,75 @@ function candidateScore(universe,prospect,team){
   const commercial=financial?(prospect.commercial*.22+sponsorFit(universe,team,prospect)*.18):(prospect.commercial*.07+sponsorFit(universe,team,prospect)*.05);
   return visible*.72+results+commercial+academy-costPenalty;
 }
-function seatMarket(universe,rng){
-  const standings=driverStandings(universe,'F1'); const f2=driverStandings(universe,'F2'); const replaceCount=rng.chance(.45)?2:1;
-  const outgoing=[...standings].reverse().filter((d)=>d.age>27||d.season.points<10||d.contract.through<=universe.year).slice(0,replaceCount);
-  const used=new Set();
-  outgoing.forEach((driver,index)=>{
-    const seatTeam=getTeam(universe,driver.teamId);
-    const prospect=[...f2].filter((candidate)=>!used.has(candidate.id)).sort((a,b)=>candidateScore(universe,b,seatTeam)-candidateScore(universe,a,seatTeam))[0];
-    if(!prospect)return;used.add(prospect.id);
-    const careerRoll=rng.next();
-    if(careerRoll<.17){
-      moveDriver(universe,driver,'F1',seatTeam.id,'Reserve driver');driver.contract={through:universe.year+1,salary:Math.max(2,Math.round(driver.contract.salary*.35)),status:'Reserve'};
-    }else{
-      const destination=careerRoll<.62?'FE':'WEC'; const destTeams=universe.feederTeams[destination];
-      const destTeam=[...destTeams].sort((a,b)=>universe.drivers.filter((d)=>d.active&&d.series===destination&&d.teamId===a.id).length-universe.drivers.filter((d)=>d.active&&d.series===destination&&d.teamId===b.id).length)[0];
-      clearSeriesSeat(universe,destination,destTeam,rng);moveDriver(universe,driver,destination,destTeam.id);driver.fame+=8;
-    }
-    moveDriver(universe,prospect,'F1',seatTeam.id);prospect.contract={through:universe.year+2,salary:Math.round(prospect.baseTalent**2/340),status:'Signed'};prospect.confidence=72;
-    createStory(universe,{category:'Driver Market',headline:`${prospect.name} earns the ${seatTeam.name} seat`,dek:`${driver.name} leaves the race seat. The decision uses visible pace, results, academy knowledge, salary and sponsor value. The team does not know the driver's hidden rarity or future career curve.`,priority:91,subjects:[prospect.id,driver.id,seatTeam.id],round:0});
+function updateDriverHappiness(universe){
+  const positions={};['F1','F2','F3','F4','FE','WEC'].forEach((series)=>driverStandings(universe,series).forEach((driver,index)=>{positions[driver.id]=index+1;}));
+  universe.drivers.filter((driver)=>driver.active&&driver.role!=='Retired').forEach((driver)=>{
+    const position=positions[driver.id]||99;const field=driver.series==='F1'?22:(universe.drivers.filter((d)=>d.active&&d.series===driver.series&&d.role==='Race driver').length||22);
+    const roleScore=driver.role==='Race driver'?(driver.seat===1?82:driver.seat===2?61:52):driver.role==='Test driver'?42:driver.role==='Free agent'?28:48;
+    const resultsScore=driver.role==='Race driver'?clamp(88-(position-1)*(62/Math.max(1,field-1))+driver.season.wins*2.5,24,96):45;
+    const salary=driver.contract?.salary||0;const demand=driver.salaryDemand||Math.max(2,Math.round((driver.baseTalent**2)/285));const salaryScore=clamp(48+(salary-demand)*2.2,22,94);
+    const titleBonus=driver.season.wins>0?4:0;const blocked=driver.seat===2&&driver.happiness?.ambition>74&&driver.season.points>0?-(9+(driver.career.titles===0&&driver.age>=25?6:0)):0;
+    const overall=clamp(roleScore*.34+resultsScore*.35+salaryScore*.21+(driver.confidence||60)*.1+titleBonus+blocked,20,96);
+    const reasons=[];if(driver.role==='Test driver')reasons.push('wants a race seat');if(driver.seat===2&&driver.happiness?.ambition>74)reasons.push('wants first-driver status');if(resultsScore<48)reasons.push('frustrated by results');if(salaryScore<48)reasons.push('expects a larger contract');if(position<=3)reasons.push('happy with championship form');
+    driver.happiness={...(driver.happiness||{}),overall:Math.round(overall),role:Math.round(roleScore),results:Math.round(resultsScore),salary:Math.round(salaryScore),reasons};
+    const championPremium=driver.career.titles>0?Math.min(1.28,1.08+driver.career.titles*.04):1;const performancePremium=driver.season.wins>2?1.18:position<=3?1.08:.98;driver.salaryDemand=Math.max(1,Math.round(expectedSalary(driver,driver.series,driver.seat)*performancePremium*championPremium));
   });
-  const f3=driverStandings(universe,'F3').slice(0,2); const f2Bottom=driverStandings(universe,'F2').slice(-2);
-  f3.forEach((driver,index)=>{const target=f2Bottom[index];if(!target)return;const teamId=target.teamId;const feTeam=universe.feederTeams.FE[(index+3)%universe.feederTeams.FE.length];clearSeriesSeat(universe,'FE',feTeam,rng);moveDriver(universe,target,'FE',feTeam.id);moveDriver(universe,driver,'F2',teamId);});
-  const f4=driverStandings(universe,'F4').slice(0,3); const f3Bottom=driverStandings(universe,'F3').slice(-3);
-  f4.forEach((driver,index)=>{const target=f3Bottom[index];if(!target)return;const teamId=target.teamId;moveDriver(universe,target,'FREE',null,'Free agent');target.contract.status='Available';moveDriver(universe,driver,'F3',teamId);});
 }
+function seriesSalaryFactor(series){return{F1:1,F2:.40,F3:.20,F4:.08,FE:.65,WEC:.70,FREE:.22}[series]||.25;}
+function expectedSalary(driver,series=driver.series,seat=driver.seat||2){const base=Math.max(3,observedDriverValue(driver)**2/320);const roleMultiplier = seat === 1 ? 1.10 : seat === 2 ? .96 : seat === 3 ? .42 : 1;return Math.max(1,Math.round(base*seriesSalaryFactor(series)*roleMultiplier));}
+function marketTeamBudget(team,series){if(series==='F1')return Math.max(0,(team.finances?.cash||0)+Math.max(-40,team.finances?.projectedBalance||0)*.35-80);return Math.max(6,(team.finances?.cash||40)*.35);}
+function applyPromisedSeatHierarchy(universe,driver,team,series,seat){
+  if(!team||driver.role!=='Race driver')return;
+  const roster=universe.drivers.filter((candidate)=>candidate.active&&candidate.series===series&&candidate.role==='Race driver'&&candidate.teamId===team.id&&candidate.id!==driver.id)
+    .sort((a,b)=>(a.seat||9)-(b.seat||9)||observedDriverValue(b)-observedDriverValue(a));
+  driver.seat=Math.max(1,seat||1);
+  let next=1;
+  roster.forEach((teammate)=>{while(next===driver.seat)next+=1;teammate.seat=next;next+=1;});
+}
+function recordTransfer(universe,driver,from,to,reason){
+  universe.marketHistory=universe.marketHistory||[];const entry={id:`market-${universe.year+1}-${universe.marketHistory.length+1}`,year:universe.year+1,driverId:driver.id,driverName:driver.name,from,to,reason};universe.marketHistory.unshift(entry);driver.transferHistory=driver.transferHistory||[];driver.transferHistory.unshift(entry);return entry;
+}
+function moveWithMarket(universe,driver,newSeries,newTeamId,role,seat,salary,reason){
+  const oldTeam=getTeam(universe,driver.teamId);const from={teamId:oldTeam?.id||null,teamName:oldTeam?.name||((driver.role==='Free agent'||driver.series==='FREE')?'Free agents':'Independent'),series:driver.series,seat:driver.seat||0,role:driver.role,salary:driver.contract?.salary||0};
+  moveDriver(universe,driver,newSeries,newTeamId,role,seat);const newTeam=getTeam(universe,newTeamId);applyPromisedSeatHierarchy(universe,driver,newTeam,newSeries,seat);driver.contract={through:universe.year+(newSeries==='F1'?rngContract(driver):2),salary:Math.max(1,Math.round(salary)),status:role==='Race driver'?'Signed':role};driver.salaryDemand=expectedSalary(driver,newSeries,driver.seat);
+  const to={teamId:newTeam?.id||null,teamName:newTeam?.name||'Free agents',series:newSeries,seat:driver.seat||0,role,salary:driver.contract.salary};recordTransfer(universe,driver,from,to,reason);return{from,to};
+}
+function rngContract(driver){return driver.age<23?3:2;}
+function willingnessScore(driver,series,seat,salary){
+  const level={F4:1,F3:2,F2:3,FE:3.4,WEC:3.5,F1:5,FREE:0}[series]||0;const current={F4:1,F3:2,F2:3,FE:3.4,WEC:3.5,F1:5,FREE:0}[driver.series]||0;
+  const promotion=(level-current)*10;const roleGain=(driver.seat||3)-seat;const moneyGain=(salary-(driver.contract?.salary||0))*1.2;const discontent=(70-(driver.happiness?.overall||65))*.65;return promotion+roleGain*7+moneyGain+discontent;
+}
+function lowestRaceDriver(universe,team,series){return universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId===team.id).sort((a,b)=>observedDriverValue(a)-observedDriverValue(b)||a.season.points-b.season.points)[0];}
+function seatMarket(universe,rng){
+  updateDriverHappiness(universe);universe.marketHistory=(universe.marketHistory||[]).filter((entry)=>entry.year>=universe.year-4);
+  const completedYear=universe.year;const nextYear=universe.year+1;const moved=new Set();let moves=0;
+  // First assign explicit first/second-driver hierarchy from current observed status, while preserving a successful champion as leader.
+  universe.teams.forEach((team)=>{const roster=universe.drivers.filter((d)=>d.active&&d.series==='F1'&&d.role==='Race driver'&&d.teamId===team.id).sort((a,b)=>b.season.points-a.season.points||observedDriverValue(b)-observedDriverValue(a));roster.forEach((driver,index)=>{driver.seat=index+1;});});
+  const destinationTeams=[...universe.teams].sort((a,b)=>marketTeamBudget(b,'F1')-marketTeamBudget(a,'F1')||a.season.points-b.season.points);
+  for(const team of destinationTeams){
+    if(moves>=4)break;const roster=universe.drivers.filter((d)=>d.active&&d.series==='F1'&&d.role==='Race driver'&&d.teamId===team.id);if(roster.length<2)continue;
+    const outgoing=[...roster].sort((a,b)=>(a.happiness?.overall||70)-(b.happiness?.overall||70)||observedDriverValue(a)-observedDriverValue(b))[0];
+    const ambitiousUpgrade=(team.finances?.projectedBalance||0)>95&&observedDriverValue(outgoing)<88&&rng.chance(.44);const teamNeedsChange=outgoing.contract?.through<=completedYear||(outgoing.happiness?.overall||70)<48||(outgoing.season.points<8&&rng.chance(.55))||ambitiousUpgrade;if(!teamNeedsChange&&rng.chance(.78))continue;
+    const candidates=universe.drivers.filter((driver)=>driver.active&&!moved.has(driver.id)&&driver.id!==outgoing.id&&driver.teamId!==team.id&&(['F1','F2','FE','WEC','FREE'].includes(driver.series)||driver.role==='Test driver')&&driver.role!=='Retired').map((driver)=>{
+      const offerSeat=roster.some((d)=>d.id!==outgoing.id&&d.seat===1&&d.season.points>driver.season.points)?2:1;const base=Math.max(3,observedDriverValue(driver)**2/370);const offerSalary=Math.round(base*(offerSeat===1?1.08:.94));const score=candidateScore(universe,driver,team)+willingnessScore(driver,'F1',offerSeat,offerSalary)+(driver.series==='F2'&&driver.season.wins>1?7:0);return{driver,offerSeat,offerSalary,score};
+    }).filter((offer)=>offer.offerSalary<=marketTeamBudget(team,'F1')*.42+38&&offer.score>58).sort((a,b)=>b.score-a.score);
+    const chosen=candidates[0];if(!chosen)continue;const accepts=willingnessScore(chosen.driver,'F1',chosen.offerSeat,chosen.offerSalary)>-3||chosen.driver.contract?.through<=completedYear;if(!accepts)continue;
+    // Displaced drivers normally seek a lead role elsewhere rather than disappearing.
+    const fallbackSeries=outgoing.age>31?(rng.chance(.5)?'WEC':'FE'):'FREE';if(fallbackSeries==='FREE'){moveWithMarket(universe,outgoing,'FREE',null,'Free agent',0,Math.max(1,Math.round((outgoing.contract?.salary||10)*.2)),'F1 seat lost after contract review');outgoing.contract.status='Available';}else{const dest=[...universe.feederTeams[fallbackSeries]].sort((a,b)=>b.rating-a.rating)[0];const displaced=lowestRaceDriver(universe,dest,fallbackSeries);if(displaced){moveWithMarket(universe,displaced,'FREE',null,'Free agent',0,1,`${fallbackSeries} roster space opened`);}moveWithMarket(universe,outgoing,fallbackSeries,dest.id,'Race driver',1,Math.max(4,Math.round((outgoing.contract?.salary||12)*.58)),'Accepted a lead role outside F1');}
+    const transfer=moveWithMarket(universe,chosen.driver,'F1',team.id,'Race driver',chosen.offerSeat,chosen.offerSalary,chosen.offerSeat===1?'Signed as first driver':'Signed for the second race seat');chosen.driver.confidence=72;moved.add(chosen.driver.id);moves+=1;
+    createStory(universe,{category:'Driver Market',headline:`${chosen.driver.name} joins ${team.name} as driver ${chosen.offerSeat}`,dek:`${transfer.from.teamName} (${transfer.from.seat||'—'}) ${transfer.from.series}, $${transfer.from.salary}m → ${team.name} (${chosen.offerSeat}) F1, $${chosen.offerSalary}m. ${chosen.offerSeat===1?'Leadership status helped close the deal.':'The team offered the stronger sporting package.'}`,priority:94,subjects:[chosen.driver.id,team.id],round:0});
+  }
+  // One or two visible same-category moves in each secondary championship. These create careers, not just promotions.
+  ['F2','F3','F4','FE','WEC'].forEach((series)=>{
+    const teams=[...(universe.feederTeams[series]||[])].sort((a,b)=>b.rating-a.rating);if(teams.length<2)return;const count=series==='F2'?2:1;
+    for(let i=0;i<count;i+=1){const target=teams[i%Math.min(3,teams.length)];const current=lowestRaceDriver(universe,target,series);const pool=universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId!==target.id&&!moved.has(driver.id)&&((driver.happiness?.overall||70)<64||driver.contract?.through<=completedYear)).sort((a,b)=>observedDriverValue(b)-observedDriverValue(a)||b.season.points-a.season.points);const candidate=pool[0];if(!candidate||!current||observedDriverValue(candidate)<observedDriverValue(current)-2)continue;const seat=observedDriverValue(candidate)>observedDriverValue(current)+3?1:2;const salary=expectedSalary(candidate,series,seat);if(willingnessScore(candidate,series,seat,salary)<-4)continue;moveWithMarket(universe,current,'FREE',null,'Free agent',0,1,`${series} seat lost`);const transfer=moveWithMarket(universe,candidate,series,target.id,'Race driver',seat,salary,seat===1?'Moved for first-driver status':'Moved to a stronger entrant');moved.add(candidate.id);moves+=1;createStory(universe,{category:'Driver Market',headline:`${candidate.name} switches teams in ${series}`,dek:`${transfer.from.teamName} (${transfer.from.seat}) ${series}, $${transfer.from.salary}m → ${target.name} (${seat}) ${series}, $${salary}m. ${seat===1?'The promise of leadership outweighed salary alone.':'The destination offers a stronger car and title chance.'}`,priority:70,subjects:[candidate.id,target.id],round:0});}
+  });
+  // Promotions remain performance-led; lower ladders refill later.
+  const promote=(fromSeries,toSeries,count)=>{const candidates=driverStandings(universe,fromSeries).filter((driver)=>!moved.has(driver.id)).slice(0,count);candidates.forEach((driver,index)=>{const targets=universe.feederTeams[toSeries];if(!targets)return;const target=[...targets].sort((a,b)=>b.rating-a.rating)[index%targets.length];const displaced=lowestRaceDriver(universe,target,toSeries);if(displaced)moveWithMarket(universe,displaced,'FREE',null,'Free agent',0,1,`${toSeries} seat lost to promoted prospect`);const salary=expectedSalary(driver,toSeries,2);const transfer=moveWithMarket(universe,driver,toSeries,target.id,'Race driver',2,salary,`${fromSeries} performance earned promotion`);moved.add(driver.id);moves+=1;createStory(universe,{category:'Driver Market',headline:`${driver.name} graduates from ${fromSeries} to ${toSeries}`,dek:`${transfer.from.teamName} (${transfer.from.seat}) ${fromSeries} → ${target.name} (2) ${toSeries}, $${salary}m. Teams saw the results and current value—not hidden rarity or future potential.`,priority:82,subjects:[driver.id,target.id],round:0});});};
+  promote('F4','F3',2);promote('F3','F2',2);
+  if(moves)createStory(universe,{category:'Driver Market',headline:`The ${nextYear} market closes with ${moves} recorded driver moves`,dek:`Every move preserves origin, destination, championship, seat hierarchy and salary. Happiness, leadership status, results, sponsor fit and team affordability all influenced the decisions.`,priority:99,subjects:[],round:0});
+}
+
 function addNewProspects(universe,rng){
   const existingGen=universe.drivers.some((driver)=>driver.active&&['F2','F3','F4'].includes(driver.series)&&driver.rarity==='Generational');
   universe.feederTeams.F4.forEach((team)=>{
@@ -633,8 +798,7 @@ function fillAllSeriesSeats(universe,rng){
       const candidate=tests[0]||prospect||free||alternative;
       if(!candidate)break;
       const sourceSeries=candidate.series;const sourceRole=candidate.role;
-      moveDriver(universe,candidate,'F1',team.id,'Race driver');
-      candidate.contract={through:universe.year+2,salary:Math.round(observedDriverValue(candidate)**2/355),status:'Signed'};
+      const fillSalary=Math.round(observedDriverValue(candidate)**2/355);moveWithMarket(universe,candidate,'F1',team.id,'Race driver',roster.length+1,fillSalary,'Filled an open F1 seat after the market');
       candidate.confidence=68;roster.push(candidate);
       createStory(universe,{category:'Driver Market',headline:`${candidate.name} fills the open ${team.name} seat`,dek:`The selection comes from ${sourceRole==='Test driver'?'the constructor test programme':['FE','WEC'].includes(sourceSeries)?sourceSeries:sourceRole==='Free agent'?'the open market':'the feeder ladder'} and is based on visible current value rather than hidden potential.`,priority:74,subjects:[candidate.id,team.id],round:0});
     }
@@ -645,7 +809,7 @@ function fillAllSeriesSeats(universe,rng){
     let roster=universe.drivers.filter((driver)=>driver.active&&driver.series==='F2'&&driver.role==='Race driver'&&driver.teamId===team.id);
     while(roster.length<2){
       const candidate=driverStandings(universe,'F3')[0];if(!candidate)break;
-      moveDriver(universe,candidate,'F2',team.id);roster.push(candidate);
+      moveWithMarket(universe,candidate,'F2',team.id,'Race driver',roster.length+1,expectedSalary(candidate,'F2',roster.length+1),'Promoted to fill an open F2 seat');roster.push(candidate);
     }
   });
   // F3 draws from F4.
@@ -653,7 +817,7 @@ function fillAllSeriesSeats(universe,rng){
     let roster=universe.drivers.filter((driver)=>driver.active&&driver.series==='F3'&&driver.role==='Race driver'&&driver.teamId===team.id);
     while(roster.length<2){
       const candidate=driverStandings(universe,'F4')[0];if(!candidate)break;
-      moveDriver(universe,candidate,'F3',team.id);roster.push(candidate);
+      moveWithMarket(universe,candidate,'F3',team.id,'Race driver',roster.length+1,expectedSalary(candidate,'F3',roster.length+1),'Promoted to fill an open F3 seat');roster.push(candidate);
     }
   });
   // F4 is the procedural entry point.
@@ -672,7 +836,7 @@ function fillAllSeriesSeats(universe,rng){
       const capacity=rosterCapacity(series);let roster=universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId===team.id);
       while(roster.length<capacity){
         const free=universe.drivers.filter((driver)=>driver.active&&driver.role==='Free agent').sort((a,b)=>observedDriverValue(b)-observedDriverValue(a))[0];
-        if(free){moveDriver(universe,free,series,team.id);roster.push(free);continue;}
+        if(free){moveWithMarket(universe,free,series,team.id,'Race driver',roster.length+1,expectedSalary(free,series,roster.length+1),'Signed from free agency to fill an open seat');roster.push(free);continue;}
         const roll=rng.next();const rarity=roll>.9?'Legend':roll>.62?'Epic':roll>.25?'Rare':'Uncommon';
         const id=`${series.toLowerCase()}-arrival-${universe.year}-${team.id}-${roster.length}-${rng.int(100,999)}`;
         const arrival=createProceduralDriver({seed:universe.seed+universe.year*17011+idNumber(id),id,series,teamId:team.id,seat:roster.length+1,rarity,age:rng.int(23,35)});
@@ -686,11 +850,18 @@ function fillAllSeriesSeats(universe,rng){
     let tests=(team.testDriverIds||[]).map((id)=>getDriver(universe,id)).filter((driver)=>driver?.active&&driver.role==='Test driver');
     while(tests.length<2){
       const id=`test-arrival-${universe.year}-${team.id}-${tests.length}-${rng.int(100,999)}`;
-      const test=createProceduralDriver({seed:universe.seed+universe.year*23003+idNumber(id),id,series:'F1',teamId:team.id,seat:0,rarity:rng.chance(.24)?'Rare':'Uncommon',age:rng.int(21,34),academy:team.id,role:'Test driver'});
+      const test=createProceduralDriver({seed:universe.seed+universe.year*23003+idNumber(id),id,series:'F1',teamId:team.id,seat:3,rarity:rng.chance(.24)?'Rare':'Uncommon',age:rng.int(21,34),academy:team.id,role:'Test driver'});
       test.role='Test driver';test.isEmergencyReserve=true;test.contract.salary=Math.max(2,Math.round(test.contract.salary*.32));
       universe.drivers.push(test);team.testDriverIds=team.testDriverIds||[];team.testDriverIds.push(test.id);tests.push(test);
     }
+    const raceRoster=universe.drivers.filter((driver)=>driver.active&&driver.series==='F1'&&driver.role==='Race driver'&&driver.teamId===team.id).sort((a,b)=>b.season.points-a.season.points||observedDriverValue(b)-observedDriverValue(a));
+    raceRoster.forEach((driver,index)=>{driver.seat=index+1;});
+    tests.forEach((driver)=>{driver.seat=3;});
   });
+  Object.entries(universe.feederTeams||{}).forEach(([series,teams])=>teams.forEach((team)=>{
+    const roster=universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId===team.id).sort((a,b)=>(a.seat||9)-(b.seat||9)||observedDriverValue(b)-observedDriverValue(a));
+    roster.forEach((driver,index)=>{driver.seat=index+1;});
+  }));
 }
 
 function snapshotDriverSeasons(universe){
@@ -747,8 +918,11 @@ function updateTeamsAndSponsors(universe,rng){
     const driverCost=[...raceDrivers,...testDrivers].reduce((sum,driver)=>sum+(driver.contract?.salary||0),0);
     const staffCost=(team.staffIds||[]).map((id)=>getStaff(universe,id)).filter(Boolean).reduce((sum,member)=>sum+(member.salary||8),0);
     const developmentCost=Math.round(70+avg(Object.values(team.facilities))*.75+Math.max(0,team.baseline-75)*2.2);
+    const operatingCost=Math.round(205+team.baseline*1.38+avg(Object.values(team.facilities))*.72);
     const mainFunding=brand.funding;
-    const projectedBalance=mainFunding+secondaryIncome+prizeMoney-driverCost-staffCost-team.finances.engineCost-developmentCost;
+    const totalIncome=mainFunding+secondaryIncome+prizeMoney;
+    const totalExpenses=driverCost+staffCost+team.finances.engineCost+developmentCost+operatingCost;
+    const projectedBalance=totalIncome-totalExpenses;
 
     team.finances.mainFunding=mainFunding;
     team.finances.secondarySponsorIncome=secondaryIncome;
@@ -757,6 +931,7 @@ function updateTeamsAndSponsors(universe,rng){
     team.finances.driverCost=driverCost;
     team.finances.staffCost=staffCost;
     team.finances.developmentCost=developmentCost;
+    team.finances.operatingCost=operatingCost;team.finances.totalIncome=totalIncome;team.finances.totalExpenses=totalExpenses;
     team.finances.dealQuality=principal?.commercial||72;
     team.finances.projectedBalance=Math.round(projectedBalance);
     team.finances.cash=Math.round(team.finances.cash+projectedBalance*.34);
@@ -851,7 +1026,9 @@ export function advanceToNextSeason(sourceUniverse){
       teams:teamTable.slice(0,12).map((team)=>({id:team.id,name:team.name,points:team.seasonPoints||0,wins:team.seasonWins||0})),
     };
   });
-  universe.seasonArchive.push({year:universe.year,championId:champion.id,championName:champion.name,constructorId:constructor.id,constructorName:constructor.name,standings:seriesArchive.F1.standings,constructors:seriesArchive.F1.teams,series:seriesArchive,calendar:universe.calendar.map((event)=>event.id),races:compressedRaces,awards:universe.awards.filter((award)=>award.year===universe.year),stories:universe.stories.filter((story)=>story.year===universe.year).slice(0,16)});
+  const completedEvents=Object.values(universe.competitionEventResults||{}).flat();
+  universe.eventArchive=universe.eventArchive||[];universe.eventArchive.push(...deepClone(completedEvents));
+  universe.seasonArchive.push({year:universe.year,championId:champion.id,championName:champion.name,constructorId:constructor.id,constructorName:constructor.name,standings:seriesArchive.F1.standings,constructors:seriesArchive.F1.teams,series:seriesArchive,calendar:universe.calendar.map((event)=>event.id),races:compressedRaces,events:completedEvents.map((record)=>({id:record.id,series:record.series,circuitId:record.circuitId,winnerId:record.winnerId,poleId:record.poleId,fastestLapDriverId:record.fastestLapDriverId,fastestLapTime:record.fastestLapTime})),awards:universe.awards.filter((award)=>award.year===universe.year),stories:universe.stories.filter((story)=>story.year===universe.year).slice(0,16)});
   const rng=makeRng(universe.seed+universe.year*7919);
   const snapshots=snapshotDriverSeasons(universe);
   currentF1Drivers(universe).forEach((driver)=>{driver.rookie=false;});
@@ -863,7 +1040,9 @@ export function advanceToNextSeason(sourceUniverse){
   updateTeamsAndSponsors(universe,rng); updateStaffMarket(universe,rng); updateCalendar(universe,rng);
   Object.values(universe.feederTeams).flat().forEach((team)=>{team.points=0;team.wins=0;});
   universe.calendar=universe.calendar.map((event,index)=>({...event,round:index+1,status:'Upcoming',sessions:[],weekendSeed:universe.seed+universe.year*101+index*1009}));
-  universe.currentRound=0;universe.currentSession=0;universe.phase='Pre-season';universe.sessionResults=[];universe.raceResults=[];universe.feederResults={F2:[],F3:[],F4:[],FE:[],WEC:[]};
+  universe.competitionCalendars=universe.competitionCalendars||{};universe.competitionCalendars.F1=universe.calendar;
+  Object.keys(universe.competitionCalendars).filter((series)=>series!=='F1').forEach((series)=>{universe.competitionCalendars[series]=universe.competitionCalendars[series].map((event,index)=>({...event,round:index+1,status:'Upcoming',sessions:[],weekendSeed:universe.seed+universe.year*131+series.charCodeAt(1)*10007+index*1301}));});
+  universe.currentRound=0;universe.currentSession=0;universe.phase='Pre-season';universe.sessionResults=[];universe.raceResults=[];universe.feederResults={F2:[],F3:[],F4:[],FE:[],WEC:[]};universe.competitionEventResults={F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]};
   createStory(universe,{category:'Pre-season',headline:`The ${universe.year} grid returns with a changed competitive order`,dek:`Regulation carry-over, staff quality, facilities, engine trajectories and winter correlation have reset the margins without making last year's quality irrelevant.`,priority:100,round:0,thread:'technical-race'});
   return universe;
 }

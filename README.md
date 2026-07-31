@@ -205,3 +205,14 @@ vite.config.js    relative production paths for GitHub Pages
 ```
 
 See `IMPLEMENTATION.md` for the detailed design-coverage map and current prototype boundaries.
+
+## Universe v3 additions
+
+- Schedule and Results now cover F1, F2, F3, F4, Formula E, and WEC. Every completed event opens a shared circuit chronicle with Overview, Current Year, History, and Stats tabs.
+- Event records preserve Friday practice, Q1, Q2, Q3, Sprint sessions where applicable, race classifications, temperatures, weather, pole, podium, fastest lap, and points.
+- Circuit performance DNA weights car architecture, reliability, driver specialty, rain probability, and extreme heat/cold differently at every venue.
+- First driver, second driver, and test/reserve status are displayed with team-colored 1/2/3 badges.
+- The off-season market uses happiness, role ambition, salary demands, results, current observed value, team affordability, and sponsor fit. Every move is stored in the Paddock ledger with origin, destination, series, seat, and salary.
+- Country flags are bundled locally in `public/flags`, so they do not depend on emoji or a third-party flag service.
+- GitHub Pages is deployed through `.github/workflows/deploy.yml`; see `DEPLOY_GITHUB.md` for the required repository and Pages settings.
+
