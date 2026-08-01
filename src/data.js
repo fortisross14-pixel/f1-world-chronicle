@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const RARITY = {
   Generational: { min: 95, max: 99, color: '#e10600', legacy: 1.28 },
@@ -181,7 +181,8 @@ const FE_TEAMS = ['Porsche Formula E','Jaguar Electric Racing','Nissan e.dams','
 const WEC_TEAMS = ['Ferrari AF Corse','Toyota Gazoo Racing','Porsche Penske','Cadillac Racing','BMW M Team','Alpine Endurance','Peugeot Sport','Aston Martin Valkyrie'];
 const F2_TEAMS = ['ART Grand Prix','Prema Racing','Rodin Motorsport','Campos Racing','Hitech GP','MP Motorsport','DAMS Lucas Oil','Invicta Racing','Trident','Van Amersfoort'];
 const F3_TEAMS = ['Prema F3','Trident F3','ART F3','Campos F3','Hitech F3','MP F3','Rodin F3','Van Amersfoort F3','Jenzer F3','AIX Racing'];
-const F4_TEAMS = ['Italian F4 Academy','British F4 Racing','Spanish F4 Team','French F4 Campus','German F4 Motorsport','Nordic F4','Japanese F4 Project','Brazil F4 Academy','Indian F4 Racing','US F4 Development','Benelux F4','Middle East F4'];
+const F4_TEAMS = ['Abarth Junior Corse','Lotus Britain F4','Movistar Racing Spain','Renault Academy France','Bosch Junior Motorsport','Volvo Nordic Racing','Toyota Junior Japan','Petrobras Brazil Academy','Mahindra India F4','Ford USA Development','ING Benelux Racing','Emirates Motorsport Academy'];
+const F4_TEAM_COUNTRIES = ['Italy','United Kingdom','Spain','France','Germany','Sweden','Japan','Brazil','India','United States','Netherlands','United Arab Emirates'];
 
 const DRIVER_STYLES = ['Aggressive attacker','Precision driver','Tyre whisperer','Wet-weather artist','Late braker','Qualifying specialist','Complete driver','Development leader'];
 export const TRACK_SPECIALTIES = ['High-speed circuits','Technical circuits','Power circuits','Street circuits','Tyre-limited circuits','Wet weather','Balanced'];
@@ -204,7 +205,7 @@ function createCareerCurve(rng, debutAge, careerLength, peakAge) {
   for (let i = 0; i < careerLength; i += 1) {
     const age = debutAge + i;
     const distance = age - peakAge;
-    const developmental = age < peakAge ? 1 - Math.min(0.18, Math.abs(distance) * 0.027) : 1 - Math.min(0.24, distance * 0.022);
+    const developmental = age < peakAge ? 1 - Math.min(0.22, Math.abs(distance) * 0.037) : 1 - Math.min(0.24, distance * 0.022);
     const noise = (rng.next() - 0.5) * 0.025;
     curve.push(Number(Math.max(0.78, Math.min(1.035, developmental + noise)).toFixed(3)));
   }
@@ -291,7 +292,9 @@ export function driverHierarchyScore(driver,year=2026){
   const success=(career.titles||0)*12+(career.f1Wins||0)*.34+(career.f1Podiums||0)*.09+(career.seriesTitles||0)*3;
   const recent=(driver?.season?.points||0)*.015+(driver?.season?.wins||0)*.8;
   const leadershipPromise=driver?.promisedSeat===1&&year<=(driver?.seatPromiseThrough||0)?16:0;
-  return currentDriverRating(driver)+Math.min(tenure,8)*.9+Math.min(experienceYears,15)*.65+success+recent+leadershipPromise;
+  const rookiePenalty=driver?.series==='F1'&&((driver?.yearsInSeries||0)<=1||driver?.rookie)?8:0;
+  const youthPenalty=driver?.series==='F1'&&(driver?.age||30)<23?3:0;
+  return currentDriverRating(driver)+Math.min(tenure,8)*.9+Math.min(experienceYears,15)*.65+success+recent+leadershipPromise-rookiePenalty-youthPenalty;
 }
 export function assignRosterHierarchy(drivers,teamId,year=2026){
   const roster=drivers.filter((driver)=>driver.active!==false&&driver.teamId===teamId&&driver.role==='Race driver');
@@ -391,7 +394,7 @@ function makeSeriesTeams(series) {
   const names = series === 'F2' ? F2_TEAMS : series === 'F3' ? F3_TEAMS : series === 'F4' ? F4_TEAMS : series === 'FE' ? FE_TEAMS : WEC_TEAMS;
   const teams=names.map((name,index)=>({
     id:`${series.toLowerCase()}-team-${index}`, series, name, short:name.split(' ').map((word)=>word[0]).join('').slice(0,3).toUpperCase(),
-    country:index%4===0?'United Kingdom':index%4===1?'Italy':index%4===2?'Germany':'Spain', rating: series==='F4'?62+((index*3)%10):series==='F3'?72+((index*3)%9):series==='F2'?78+((index*5)%10):80+((index*4)%11),
+    country:series==='F4'?(F4_TEAM_COUNTRIES[index]||'Spain'):index%4===0?'United Kingdom':index%4===1?'Italy':index%4===2?'Germany':'Spain', rating: series==='F4'?62+((index*3)%10):series==='F3'?72+((index*3)%9):series==='F2'?78+((index*5)%10):80+((index*4)%11),
     driverIds:[], points:0,wins:0, color:`hsl(${(index*47 + (series.charCodeAt(1)||0)*9)%360} 72% 52%)`,
     carProfile:{high:64+((index*7)%24),low:64+((index*11)%24),straight:64+((index*5)%24),tyre:64+((index*13)%24),reliability:68+((index*9)%22)},
     baseline:series==='F4'?62+((index*3)%10):series==='F3'?72+((index*3)%9):series==='F2'?78+((index*5)%10):80+((index*4)%11),
@@ -426,7 +429,7 @@ function seriesAge(rng, series, rarity) {
   if (series==='F4') return rng.int(15,19);
   if (series==='F3') return rng.int(16,22);
   if (series==='F2') return rng.int(17,25);
-  if (series==='F1') { const roll=rng.next(); return roll>.90?rng.int(36,40):roll>.64?rng.int(29,35):rng.int(18,28); }
+  if (series==='F1') { const roll=rng.next(); if(roll>.90)return rng.int(36,40); if(roll>.64)return rng.int(29,35); const minAge=['Generational','Legend'].includes(rarity)?21:rarity==='Epic'?22:23; return rng.int(minAge,28); }
   return rng.int(20,40);
 }
 
@@ -441,6 +444,12 @@ function generateDriversForSeries(rng, series, teams, count, countryBias = []) {
     const years=Math.max(0,driver.age-driver.debutAge);
     if(series==='F1'){
       driver.rookie=years<=1;
+      if(driver.age===21){
+        driver.curveIndex=Math.max(0,Math.min(driver.careerCurve.length-1,driver.age-driver.debutAge));
+        driver.careerCurve[driver.curveIndex]=Number(Math.min(driver.careerCurve[driver.curveIndex]||.86,.82+rng.next()*.06).toFixed(3));
+        driver.careerMultiplier=driver.careerCurve[driver.curveIndex];
+        driver.observedRating=Math.round(driver.baseTalent*driver.careerMultiplier*driver.annualForm);
+      }
       driver.career.f1Starts=Math.max(0,years*rng.int(12,22));
       const eliteFactor=rarity==='Generational'?.42:rarity==='Legend'?.28:rarity==='Epic'?.13:rarity==='Rare'?.055:.015;
       driver.career.f1Wins=Math.max(0,Math.round(years*eliteFactor*rng.next()*2.2));
@@ -584,7 +593,7 @@ export function createUniverse(seed = 20260731) {
     teams, staff, engines:ENGINES, mainBrands:MAIN_BRANDS, sponsors:SPONSOR_BRANDS,
     drivers, feederTeams:{F2:f2Teams,F3:f3Teams,F4:f4Teams,FE:feTeams,WEC:wecTeams},
     calendar, competitionCalendars, circuitPool:[...CIRCUIT_POOL,...Object.values(VIRTUAL_CIRCUITS)], sessionResults:[], raceResults:[],
-    feederResults:{F2:[],F3:[],F4:[],FE:[],WEC:[]}, competitionEventResults:{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]}, eventArchive:[], marketHistory:[],
+    feederResults:{F2:[],F3:[],F4:[],FE:[],WEC:[]}, competitionEventResults:{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]}, eventArchive:[], marketHistory:[], preseasonReports:[],
     competitions:[
       {id:'F1',name:'Formula 1 World Championship',level:100},
       {id:'F2',name:'Formula 2 Championship',level:82},
@@ -629,7 +638,7 @@ export function hydrateUniverse(input){
   universe.schemaVersion=SCHEMA_VERSION;
   universe.competitionCalendars=universe.competitionCalendars||buildCompetitionCalendars(universe.seed||20260731,universe.calendar||[]);
   universe.competitionEventResults=universe.competitionEventResults||{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]};
-  universe.eventArchive=universe.eventArchive||[];universe.marketHistory=universe.marketHistory||[];
+  universe.eventArchive=universe.eventArchive||[];universe.marketHistory=universe.marketHistory||[];universe.preseasonReports=universe.preseasonReports||[];
   const sourceVersion=input?.schemaVersion||0;
   universe.drivers=(universe.drivers||[]).map((driver)=>{
     const scale=SERIES_SALARY_SCALE[driver.series]||.25;

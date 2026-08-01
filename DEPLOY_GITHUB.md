@@ -29,4 +29,4 @@ git commit -m "Remove tracked dependencies and use Linux-safe Vite build"
 git push
 ```
 
-The deployment workflow runs `smoke`, `deterministic` and `universe-v4` validation before building.
+The deployment workflow runs `smoke`, `deterministic`, `universe-v4` and `universe-v5` validation before building.

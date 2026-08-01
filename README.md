@@ -24,6 +24,8 @@ Simulation-only integrity tests, which do not require React or Vite packages:
 npm run smoke
 npm run deterministic
 npm run universe-v4
+npm run universe-v5
+npm run cash-analysis
 ```
 
 ## GitHub Pages deployment
@@ -51,7 +53,7 @@ The application opens on a dedicated universe screen rather than entering a pre-
 - Portable JSON export and import
 - Schema checks that prevent an older prototype save from crashing a newer build
 
-Schema v8 changes the world model substantially. The hydration layer upgrades recent universe saves, adds missing staff/facility fields and rebuilds driver hierarchy, but very early prototype saves should be exported before switching builds.
+Schema v9 expands competition, driver, team-history, preseason-report and facility-economy data. The hydration layer upgrades recent universe saves, adds missing staff/facility fields and rebuilds driver hierarchy, but very early prototype saves should be exported before switching builds.
 
 ## Complete driver world
 
@@ -88,14 +90,26 @@ The lower categories use deeper, lower-skew distributions while still allowing a
 
 ## Competitions
 
-F1, F2, F3, F4, Formula E and WEC are first-class competitions. Each competition page has four views:
+F1, F2, F3, F4, Formula E and WEC are first-class competitions. Each competition page has five views:
 
-- **Overview:** current leaders, previous champion and historical headline records
-- **Current Year:** driver standings, team standings and category leaders such as wins, poles, podiums and points
+- **Overview:** current leader, leading team, most recent winner and championship snapshot
+- **Current Year:** every scheduled event in a race-by-race table with winner, second, third, winning team, pole and fastest lap
+- **Standings:** separate driver and team tables plus current wins, poles, podium and ability leaders
 - **History:** yearly driver champion, points total and team champion
 - **Stats:** accumulated titles, wins, points, poles, podiums and starts
 
 This makes feeder categories navigable histories rather than invisible background calculations.
+
+
+## Detail pages and season controls
+
+Driver and team records use full pages with browser-history navigation rather than stacked modals. Driver pages contain **Overview**, **Current Season**, **Career** and **Transfers** tabs. The Overview shows current effective skills and a numerical year-by-year career curve, keeping raw ceiling separate from current performance.
+
+Team pages contain **Overview**, **Personnel**, **Finance** and **History** tabs. Their yearly history records team name, director, championship position, points, engine and both drivers with individual points and positions.
+
+A sticky world-time bar remains above the navigation on desktop and mobile. It always exposes **+1 week**, **+4 weeks** and **Year end**, then changes to **Move to next year** after all six championships finish.
+
+The initial and off-season F1 markets enforce a minimum race-driver age of 21. A driver reaching F1 at 21 must be an elite prospect and begins on a reduced early-career multiplier rather than receiving peak skills immediately.
 
 ## Race weekends and weather
 
@@ -156,6 +170,13 @@ A driver from India, Japan, Brazil or another market can improve access to spons
 
 Team finances show main-brand funding, secondary sponsor income, prize money, driver cost, staff cost, engine cost, development spending, cash and projected balance. Financial pressure affects recruitment and makes vulnerable entries candidates for acquisition or replacement.
 
+
+### Facility economy and cash control
+
+Facilities are not a linear money sink. The cost curve rises sharply above level 7, and the final step from roughly 9.5 to 10 can consume a large constructor's surplus. Elite facilities also decay faster, so maintaining a near-perfect organization requires recurring investment. Car development combines facility quality with technical-director ability: money alone cannot create the best package without strong engineering leadership.
+
+The included deterministic three-season cash analysis keeps the richest team below runaway levels while producing major annual facility investments and allowing elite buildings to remain rare rather than permanent.
+
 ## Dynamic constructor world
 
 Constructor change is conservative rather than yearly chaos.
@@ -202,6 +223,8 @@ src/styles.css    responsive F1-inspired visual system and procedural liveries
 scripts/smoke.mjs deterministic multi-season integrity test
 scripts/deterministic.mjs race-variety, events, transfers and flags validation
 scripts/universe-v4.mjs hierarchy, facilities, staff, pages and global-time validation
+scripts/universe-v5.mjs race tables, age gates, preseason reports, histories and cash-loop validation
+scripts/cash-analysis.mjs deterministic three-season facility and cash summary
 vite.config.js    localhost and GitHub repository-base configuration
 .github/workflows/deploy.yml automated tests, build and Pages deployment
 ```
@@ -220,3 +243,15 @@ See `IMPLEMENTATION.md` for the detailed design-coverage map and current prototy
 - The shared calendar advances the whole universe by one week, four weeks or the rest of the year. Every competition scheduled in that time window is simulated.
 - Visible and simulated driver skills now use the current career multiplier and annual form. Raw 99–100 ceiling skills no longer display or perform as 100 while the driver is at a 0.81 development year.
 - Flags are bundled locally for every generated driver, staff member, team country and circuit.
+
+## Universe v5 additions
+
+- Every competition now has a race-by-race **Current Year** table and a separate **Standings** tab.
+- Driver pages use Chronicle-style Overview, Current Season, Career and Transfers tabs, including numerical Y1/Y2 career evolution rather than an unlabeled bar chart.
+- Team pages use Overview, Personnel, Finance and History tabs, with a permanent annual breakdown of identity, director, engine, championship result and both drivers.
+- The world simulation controls remain fixed above the navigation on mobile and desktop and switch cleanly from `+1 / +4 / Year end` to `Move to next year`.
+- F1 race seats have a hard minimum age of 21 in the initial universe and every off-season market. Age-21 entrants are elite but still use an early development multiplier.
+- The driver-market report displays age and supports sorting by rarity, new salary, age or recency.
+- Pre-season reports compare spending for all 62 teams and list branding changes, generated drivers and retirements with a competition filter.
+- F4 organizations use recognizable brand-style identities instead of generic country-team labels.
+- Facility investment has a nonlinear elite cost curve and faster high-end decay. A three-season deterministic cash-analysis script verifies that surpluses are reinvested without making level 10 routine.
