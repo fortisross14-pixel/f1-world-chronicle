@@ -5,7 +5,7 @@
 | Design area | Implementation |
 |---|---|
 | Universe launcher | Three IndexedDB slots with create, name, load, save, autosave, delete, export, import and schema protection |
-| F1-style shell | Responsive Home, Competitions, Schedule, Results, Drivers, Teams, Paddock, Almanac and More navigation |
+| F1-style shell | Responsive Home, Competitions, Schedule, Results, Drivers, Teams, Paddock, Almanac and More navigation with full page routes and browser Back |
 | Complete driver database | Every active, free-agent, test and retired driver with flags, rarity, category, team, rating and filters |
 | F1/F2/F3/F4 ladder | Active grids, tables, histories, champions, promotion, academies and procedural replenishment |
 | Formula E and WEC | Active alternative competitions and meaningful career destinations |
@@ -16,8 +16,8 @@
 | Weekend structure | Practice, Sprint structure, Q1/Q2/Q3 and Grand Prix simulation |
 | Sporting systems | Points, grids, starts, tyres, degradation, pit stops, failures, penalties, SC, VSC, red flags and team orders |
 | Test drivers | Two per F1 team, practice/development contribution and emergency injury cover |
-| Cars and engines | Multi-dimensional cars, circuit fit, power units, facilities, upgrades, correlation and regulation resets |
-| Staff organizations | Team principal, sporting director, technical director, strategy head and two race engineers |
+| Cars and engines | Multi-dimensional cars, circuit fit, power units and 1–10 facilities with decay, investment, upgrades, correlation and regulation resets |
+| Staff organizations | Rarity-colored leadership and one assigned race engineer per seat across F1, F2, F3, F4, Formula E and WEC; off-season staff transfers |
 | Main brands | Real-brand identity pool with country, colors, funding tier, prestige and protected status |
 | Secondary sponsors | Country links, values, livery patches, driver-nationality access and commercial negotiation |
 | Finances | Main funding, sponsor income, prize money, driver/staff/engine/development costs, cash and projected balance |
@@ -26,7 +26,7 @@
 | Magazine | Sporting, weather, prospect, technical, staff, financial, sponsor, calendar and market stories |
 | History and GOAT | Series archives, records, awards, driver/team careers, lineages and multiple GOAT modes |
 | GitHub Pages | Relative Vite asset paths and an automated GitHub Actions build/deploy workflow |
-| Long-run stability | Deterministic three-season smoke test covering all grids and archives |
+| Long-run stability | Three deterministic test suites covering multi-season grids, race variety, world calendars, flags, hierarchy, staff assignment, facilities, finances and archives |
 
 ## Important simulation behavior
 
@@ -45,6 +45,19 @@ A grid slot has a lineage independent from its current public identity. When a v
 ### Weather creates different Saturday and Sunday hierarchies
 
 Qualifying and race conditions are generated independently. Rain can reward wet skill in Q1–Q3 but disappear before the Grand Prix, or arrive during a race after a dry grid was established. The strategy department, tyre crossover, pit timing, driver composure and Safety Car timing then create separate sources of advantage.
+
+
+### Driver hierarchy is earned, not random
+
+Driver 1 and Driver 2 are recalculated from current effective quality, years with the organization, overall experience, titles, wins, podiums and recent performance. A newly arrived high-potential driver is not automatically the leader because rarity is hidden from teams. A veteran champion can retain Driver 1 status while the prospect develops, but the hierarchy can reverse once the younger driver becomes the stronger established performer.
+
+### Facilities are an economic loop
+
+Aero, simulator, manufacturing, pit crew and academy facilities are rated from 1 to 10. They decay slightly each off-season. Teams with cash or operating surplus invest in their weakest areas, while financially stressed organizations fall behind. Facilities affect setup work, pit-stop execution, reliability, development confidence and the following season's car profile.
+
+### Global time controls
+
+The calendar is shared by all six championships. Simulating one week, four weeks or the rest of the year processes every event whose scheduled week falls inside the selected window. F1 is no longer the clock that indirectly triggers every other series.
 
 ## Prototype boundaries
 

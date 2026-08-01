@@ -41,6 +41,9 @@ jobs:
       - name: Run deterministic universe test
         run: npm run deterministic
 
+      - name: Run universe v4 systems test
+        run: npm run universe-v4
+
       # package.json invokes Vite through Node directly, so the build does not
       # depend on the executable bit of node_modules/.bin/vite.
       - name: Build GitHub Pages bundle

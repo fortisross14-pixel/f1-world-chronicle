@@ -1,4 +1,4 @@
-import { RARITY, MAIN_BRANDS, makeRng, getTeam, getDriver, getStaff, getEngine, getSponsor, getMainBrand, COUNTRIES, createProceduralDriver } from './data.js';
+import { RARITY, MAIN_BRANDS, makeRng, getTeam, getDriver, getStaff, getEngine, getSponsor, getMainBrand, COUNTRIES, createProceduralDriver, currentDriverRating, assignRosterHierarchy, driverHierarchyScore, effectiveDriverSkill } from './data.js';
 
 export const GRAND_PRIX_POINTS = [25,18,15,12,10,8,6,4,2,1];
 export const SPRINT_POINTS = [8,7,6,5,4,3,2,1];
@@ -48,9 +48,9 @@ function careerMultiplier(driver) {
 }
 function driverLevel(driver, key, weather='Dry') {
   const wetWeight = weather==='Wet' ? .38 : weather==='Damp' ? .18 : 0;
-  const core = driver.skills?.[key] ?? driver.baseTalent;
-  const wet = driver.skills?.wet ?? driver.baseTalent;
-  return (core*(1-wetWeight)+wet*wetWeight)*careerMultiplier(driver)*driver.annualForm + (driver.confidence-60)*.07;
+  const core = effectiveDriverSkill(driver,key);
+  const wet = effectiveDriverSkill(driver,'wet');
+  return core*(1-wetWeight)+wet*wetWeight;
 }
 export function driverCircuitSpecialtyScore(driver,event,weather='Dry'){
   const traits=event?.traits||{};let raw=0;
@@ -74,12 +74,12 @@ function thermalConditionLabel(temperature){
 }
 function thermalDriverScore(driver,temperature=24){
   if(temperature>=32){
-    const management=(driver.skills.tyre*.52+driver.skills.consistency*.28+driver.skills.composure*.20);
+    const management=(effectiveDriverSkill(driver,'tyre')*.52+effectiveDriverSkill(driver,'consistency')*.28+effectiveDriverSkill(driver,'composure')*.20);
     const specialty=driver.trackSpecialty==='Tyre-limited circuits'?1.5:0;
     return clamp((management-78)/7+specialty, -2.5, 4.5);
   }
   if(temperature<=17){
-    const warmup=(driver.skills.oneLap*.38+driver.skills.starts*.27+driver.adaptability*.20+driver.skills.composure*.15);
+    const warmup=(effectiveDriverSkill(driver,'oneLap')*.38+effectiveDriverSkill(driver,'starts')*.27+driver.adaptability*.20+effectiveDriverSkill(driver,'composure')*.15);
     return clamp((warmup-78)/8,-2.2,3.8);
   }
   return 0;
@@ -90,15 +90,13 @@ function recentWinPressure(universe,driverId){
   return streak>=4?-5.2:streak===3?-2.8:streak===2?-1.1:0;
 }
 function observedDriverValue(driver) {
-  const skills=Object.values(driver.skills||{pace:driver.baseTalent});
-  const visibleSkill=avg(skills);
   const recent=driver.season?.form?.length?avg(driver.season.form.map((position)=>Math.max(0,24-position)))*.32:0;
-  return visibleSkill*careerMultiplier(driver)*driver.annualForm + (driver.confidence-60)*.08 + recent;
+  return currentDriverRating(driver)+recent;
 }
 function testDriverContribution(universe,team){
   const tests=(team.testDriverIds||[]).map((id)=>getDriver(universe,id)).filter((driver)=>driver?.active);
   if(!tests.length)return 65;
-  return avg(tests.map((driver)=>driver.skills.feedback*.55+driver.skills.consistency*.2+driver.experience*.25));
+  return avg(tests.map((driver)=>effectiveDriverSkill(driver,'feedback')*.55+effectiveDriverSkill(driver,'consistency')*.2+driver.experience*.25));
 }
 function teamPrincipal(universe,team){
   return (team.staffIds||[]).map((id)=>getStaff(universe,id)).find((member)=>member?.role==='Team Principal');
@@ -185,12 +183,12 @@ function simulatePractice(universe,event,session,rng) {
   const rows=currentF1Drivers(universe).map((driver)=>{
     const team=getTeam(universe,driver.teamId);
     const setupDirector=teamStaffRating(universe,team,'Technical Director');
-    const driverFeedback=driver.skills.feedback;
+    const driverFeedback=effectiveDriverSkill(driver,'feedback');
     const fit=carFit(universe,team,event,'practice');
     const weather=session.weather.state;
     const score=fit*.50+driverLevel(driver,'racePace',weather)*.30+driverFeedback*.08+setupDirector*.08+driverCircuitSpecialtyScore(driver,event,weather)+thermalDriverScore(driver,session.weather.temperature)*.75+(rng.next()-.5)*6.4;
     const testWork=testDriverContribution(universe,team);
-    const setupGain=clamp((driverFeedback+setupDirector+team.facilities.simulator+testWork)/400*.95+rng.next()*.42,0.25,1.35);
+    const setupGain=clamp((driverFeedback+setupDirector+(team.facilities.simulator||5)*10+testWork)/400*.95+rng.next()*.42,0.25,1.35);
     team.weekendSetup=clamp((team.weekendSetup||0)+setupGain/3,0,2.8);
     const issue=rng.chance(clamp((95-team.car.reliability)/420,0.004,.06))?rng.pick(['hydraulic leak','sensor problem','gearbox warning','cooling issue']):null;
     return {driverId:driver.id,teamId:team.id,score,time:lapTimeFromScore(score,event,'Practice',rng),laps:rng.int(19,32),compound:rng.pick(['Soft','Medium','Hard']),issue,setupGain:Number(setupGain.toFixed(2))};
@@ -207,8 +205,8 @@ function qualifyingRun(universe,event,drivers,weather,temperature,roundName,rng,
     const trackEvolution=(roundName==='Q3'?1.6:roundName==='Q2'?.9:0);
     const runTiming=(strategy-70)*.025+(rng.next()-.5)*2.2;
     const trafficPenalty=rng.chance(roundName==='Q1'?.12:.06)?rng.next()*2.1:0;
-    const deleted=rng.chance(clamp((96-driver.skills.consistency)/850,0.003,.045));
-    const score=carFit(universe,team,event,'qualifying')*.47+driverLevel(driver,'oneLap',weather)*.39+driver.skills.composure*.04+driverCircuitSpecialtyScore(driver,event,weather)*1.15+thermalDriverScore(driver,temperature)*.65+runTiming+trackEvolution-trafficPenalty+(rng.next()-.5)*4.2;
+    const deleted=rng.chance(clamp((96-effectiveDriverSkill(driver,'consistency'))/850,0.003,.045));
+    const score=carFit(universe,team,event,'qualifying')*.47+driverLevel(driver,'oneLap',weather)*.39+effectiveDriverSkill(driver,'composure')*.04+driverCircuitSpecialtyScore(driver,event,weather)*1.15+thermalDriverScore(driver,temperature)*.65+runTiming+trackEvolution-trafficPenalty+(rng.next()-.5)*4.2;
     return {driverId:driver.id,teamId:team.id,score,time:lapTimeFromScore(score,event,'Qualifying',rng)+(deleted?.75:0),deleted,compound:'Soft'};
   }).sort((a,b)=>a.time-b.time);
   const leader=rows[0].time;
@@ -227,7 +225,7 @@ function simulateQualifying(universe,event,session,rng) {
   const final=[...q3,...eliminatedQ2,...eliminatedQ1].map((row,index)=>({...row,position:index+1}));
   const pole=getDriver(universe,final[0].driverId); pole.season.poles+=1; pole.season.qualifyingPoints+=25; pole.career.f1Poles+=1; const poleTeam=getTeam(universe,pole.teamId); if(poleTeam){poleTeam.season.poles+=1;poleTeam.career.poles+=1;}
   final.slice(1).forEach((row,index)=>{const d=getDriver(universe,row.driverId);d.season.qualifyingPoints+=Math.max(0,18-index);});
-  const wetStar=weather!=='Dry'?[...final].slice(0,6).sort((a,b)=>getDriver(universe,b.driverId).skills.wet-getDriver(universe,a.driverId).skills.wet)[0]:null;
+  const wetStar=weather!=='Dry'?[...final].slice(0,6).sort((a,b)=>effectiveDriverSkill(getDriver(universe,b.driverId),'wet')-effectiveDriverSkill(getDriver(universe,a.driverId),'wet'))[0]:null;
   return {kind:'Qualifying',rounds:{Q1:q1,Q2:q2,Q3:q3},rows:final,grid:final.map((row)=>row.driverId),headline:`${pole.name} claims pole${weather!=='Dry'?' in a rain-affected session':''}`,events:[
     ...(q1.filter((row)=>row.deleted).slice(0,2).map((row)=>({type:'Deleted lap',text:`${getDriver(universe,row.driverId).name} lost a lap to track limits`}))),
     ...(wetStar?[{type:'Wet qualifying',text:`${getDriver(universe,wetStar.driverId).name} exploited ${weather.toLowerCase()} conditions`}]:[]),
@@ -240,11 +238,11 @@ function tyreForState(state,aggression=false) {
   return aggression?'Soft':'Medium';
 }
 function strategyQuality(universe,driver,team) {
-  return teamStaffRating(universe,team,'Head of Strategy')*.52+team.car.operations*.2+driver.skills.tyre*.18+driver.skills.composure*.1;
+  return teamStaffRating(universe,team,'Head of Strategy')*.52+team.car.operations*.2+effectiveDriverSkill(driver,'tyre')*.18+effectiveDriverSkill(driver,'composure')*.1;
 }
 function reliabilityRisk(universe,driver,team,event,rng,isSprint=false,temperature=24) {
   const engine=getEngine(universe,team.engineId);
-  const reliability=team.car.reliability*.5+(engine?.reliability||82)*.35+driver.skills.sympathy*.15;
+  const reliability=team.car.reliability*.5+(engine?.reliability||82)*.35+effectiveDriverSkill(driver,'sympathy')*.15;
   const stress=(event.traits.tyre+event.traits.high)/200;
   const thermalStress=temperature>=34?(temperature-33)*.012:temperature<=13?(14-temperature)*.004:0;
   return clamp((101-reliability)/130*(isSprint?.35:1)*(0.7+stress*.5)+thermalStress+(rng.next()-.5)*.015,.004,.22);
@@ -282,22 +280,22 @@ function simulateRace(universe,event,session,rng,isSprint=false) {
         reactDelay=strategyRoll<75?1:0;
         if(reactDelay){state.tags.push('Late tyre call'); state.time+=7.5;}
         state.stints.push({from:stintStart,to:lapStart-1,compound:previousTyre});
-        state.pitStops+=1; state.time+=(isSprint?17.5:20.5)+(100-team.facilities.pitCrew)*.055+(rng.next()-.5)*1.2;
+        state.pitStops+=1; state.time+=(isSprint?17.5:20.5)+(10-(team.facilities.pitCrew||5))*.55+(rng.next()-.5)*1.2;
         previousTyre=ideal; stintStart=lapStart;
         if(!reactDelay && track!=='Dry'){state.tags.push('Perfect crossover call');state.time-=2.8;}
-      } else if(track==='Dry' && !isSprint && segment>1 && segment<segments-1 && tyreAge>1 && rng.chance(clamp((88-driver.skills.tyre)/120+.16,.08,.35))){
-        state.stints.push({from:stintStart,to:lapStart-1,compound:previousTyre}); state.pitStops+=1; state.time+=20.5+(100-team.facilities.pitCrew)*.055; previousTyre=driver.skills.tyre>86?'Hard':'Medium'; stintStart=lapStart; tyreAge=0;
+      } else if(track==='Dry' && !isSprint && segment>1 && segment<segments-1 && tyreAge>1 && rng.chance(clamp((88-effectiveDriverSkill(driver,'tyre'))/120+.16,.08,.35))){
+        state.stints.push({from:stintStart,to:lapStart-1,compound:previousTyre}); state.pitStops+=1; state.time+=20.5+(10-(team.facilities.pitCrew||5))*.55; previousTyre=effectiveDriverSkill(driver,'tyre')>86?'Hard':'Medium'; stintStart=lapStart; tyreAge=0;
       }
       tyreAge+=1;
       const fit=carFit(universe,team,event,'race');
-      const pace=fit*.41+driverLevel(driver,'racePace',track)*.31+driver.skills.racecraft*.09+driver.skills.tyre*.055+driver.skills.consistency*.035+driverCircuitSpecialtyScore(driver,event,track)*1.3+thermalDriverScore(driver,session.weather.temperature)*1.05+recentWinPressure(universe,driver.id);
+      const pace=fit*.41+driverLevel(driver,'racePace',track)*.31+effectiveDriverSkill(driver,'racecraft')*.09+effectiveDriverSkill(driver,'tyre')*.055+effectiveDriverSkill(driver,'consistency')*.035+driverCircuitSpecialtyScore(driver,event,track)*1.3+thermalDriverScore(driver,session.weather.temperature)*1.05+recentWinPressure(universe,driver.id);
       let tyrePenalty=0;
       if((track==='Wet'&&previousTyre!=='Wet')||(track==='Damp'&&!['Intermediate','Wet'].includes(previousTyre))) tyrePenalty=12;
       if(track==='Dry'&&['Intermediate','Wet'].includes(previousTyre)) tyrePenalty=7;
       const heatLoad=Math.max(0,(session.weather.temperature||24)-30)*.055;
-      const degradation=Math.max(0,((event.traits.tyre-driver.skills.tyre)*.035+heatLoad)*tyreAge);
+      const degradation=Math.max(0,((event.traits.tyre-effectiveDriverSkill(driver,'tyre'))*.035+heatLoad)*tyreAge);
       const traffic=(state.virtualPos>8?event.traits.overtake<55?1.4:.4:0);
-      const variability=(rng.next()-.5)*(12-driver.skills.consistency/15);
+      const variability=(rng.next()-.5)*(12-effectiveDriverSkill(driver,'consistency')/15);
       totalPerformance+=pace-tyrePenalty-degradation-traffic+variability;
       state.time+=(lapEnd-lapStart+1)*(96-(pace-70)*.24)+tyrePenalty+degradation;
       if(state.status==='Running' && rng.chance(reliabilityRisk(universe,driver,team,event,rng,isSprint,session.weather.temperature)/segments)){
@@ -305,7 +303,7 @@ function simulateRace(universe,event,session,rng,isSprint=false) {
         const reason=rng.pick(['power unit failure','hydraulic failure','gearbox failure','electrical shutdown','overheating']);
         state.events.push({lap:state.lapsCompleted,type:'Retirement',text:`${driver.name} retires with ${reason}`}); raceEvents.push(state.events.at(-1));
       }
-      const incidentChance=clamp((94-driver.skills.consistency)/1100+(driver.style==='Aggressive attacker'?.006:0)+(track!=='Dry'?.008:0),.001,.026);
+      const incidentChance=clamp((94-effectiveDriverSkill(driver,'consistency'))/1100+(driver.style==='Aggressive attacker'?.006:0)+(track!=='Dry'?.008:0),.001,.026);
       if(state.status==='Running' && rng.chance(incidentChance)){
         if(rng.chance(.28)){
           state.status='DNF'; state.lapsCompleted=lapEnd; state.tags.push('Crash DNF');
@@ -430,19 +428,19 @@ function formatSessionRows(rows){
   return rows;
 }
 function simulateSupportPractice(universe,series,event,drivers,teams,weather,rng,label){
-  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const score=genericTeamFit(team,event)*.42+driverLevel(driver,'racePace',weather.state)*.38+driver.skills.feedback*.08+driverCircuitSpecialtyScore(driver,event,weather.state)*1.2+thermalDriverScore(driver,weather.temperature)*.75+(rng.next()-.5)*7;return{driverId:driver.id,teamId:driver.teamId,time:lapTimeFromScore(score,event,'Practice',rng),laps:rng.int(18,34),compound:rng.pick(['Soft','Medium','Hard']),points:0};}).sort((a,b)=>a.time-b.time);
+  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const score=genericTeamFit(team,event)*.42+driverLevel(driver,'racePace',weather.state)*.38+effectiveDriverSkill(driver,'feedback')*.08+driverCircuitSpecialtyScore(driver,event,weather.state)*1.2+thermalDriverScore(driver,weather.temperature)*.75+(rng.next()-.5)*7;return{driverId:driver.id,teamId:driver.teamId,time:lapTimeFromScore(score,event,'Practice',rng),laps:rng.int(18,34),compound:rng.pick(['Soft','Medium','Hard']),points:0};}).sort((a,b)=>a.time-b.time);
   return{key:label,label:label==='FP1'?'Friday Practice 1':'Friday Practice 2',weather:weather.state,temperature:weather.temperature,thermal:weather.thermal,rows:formatSessionRows(rows)};
 }
 function supportQualifyingRound(universe,event,drivers,teams,weather,rng,key,cut){
-  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const score=genericTeamFit(team,event)*.43+driverLevel(driver,'oneLap',weather.state)*.42+driver.skills.composure*.05+driverCircuitSpecialtyScore(driver,event,weather.state)*1.25+thermalDriverScore(driver,weather.temperature)*.65+(rng.next()-.5)*5.4;return{driverId:driver.id,teamId:driver.teamId,time:lapTimeFromScore(score,event,'Qualifying',rng),points:0};}).sort((a,b)=>a.time-b.time);
+  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const score=genericTeamFit(team,event)*.43+driverLevel(driver,'oneLap',weather.state)*.42+effectiveDriverSkill(driver,'composure')*.05+driverCircuitSpecialtyScore(driver,event,weather.state)*1.25+thermalDriverScore(driver,weather.temperature)*.65+(rng.next()-.5)*5.4;return{driverId:driver.id,teamId:driver.teamId,time:lapTimeFromScore(score,event,'Qualifying',rng),points:0};}).sort((a,b)=>a.time-b.time);
   formatSessionRows(rows);rows.forEach((row,index)=>{row.advanced=index<cut;});return{key,label:key,weather:weather.state,temperature:weather.temperature,thermal:weather.thermal,rows};
 }
 function simulateSupportRace(universe,series,event,drivers,teams,grid,weather,rng){
   const points=GRAND_PRIX_POINTS;const laps=series==='WEC'?Math.round(90+event.traits.high/2):Math.round(34+event.traits.low/4);
   const timeline=raceWeatherTimeline(event,weather,rng,series==='WEC'?10:7);
-  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const gridPos=Math.max(1,grid.indexOf(driver.id)+1);const specialty=avg(timeline.map((state)=>driverCircuitSpecialtyScore(driver,event,state)));const pace=genericTeamFit(team,event)*.39+driverLevel(driver,'racePace',timeline.some((s)=>s==='Wet')?'Wet':timeline.some((s)=>s==='Damp')?'Damp':'Dry')*.37+driver.skills.racecraft*.10+driver.skills.tyre*.06+specialty*1.25+thermalDriverScore(driver,weather.temperature)*1.05+(rng.next()-.5)*8;const reliability=team?.carProfile?.reliability||team?.rating||72;const dnf=rng.chance(clamp((94-reliability)/230+(95-driver.skills.consistency)/600+(timeline.includes('Wet')?.025:0)+Math.max(0,weather.temperature-33)*.008,.01,.21));const raceTime=laps*(96-(pace-70)*.22)+(gridPos-1)*.12+(rng.next()-.5)*12;return{driverId:driver.id,teamId:driver.teamId,grid:gridPos,score:pace,time:raceTime,status:dnf?'DNF':'Running',lapsCompleted:dnf?Math.max(3,laps-rng.int(2,18)):laps,points:0};});
+  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const gridPos=Math.max(1,grid.indexOf(driver.id)+1);const specialty=avg(timeline.map((state)=>driverCircuitSpecialtyScore(driver,event,state)));const pace=genericTeamFit(team,event)*.39+driverLevel(driver,'racePace',timeline.some((s)=>s==='Wet')?'Wet':timeline.some((s)=>s==='Damp')?'Damp':'Dry')*.37+effectiveDriverSkill(driver,'racecraft')*.10+effectiveDriverSkill(driver,'tyre')*.06+specialty*1.25+thermalDriverScore(driver,weather.temperature)*1.05+(rng.next()-.5)*8;const reliability=team?.carProfile?.reliability||team?.rating||72;const dnf=rng.chance(clamp((94-reliability)/230+(95-effectiveDriverSkill(driver,'consistency'))/600+(timeline.includes('Wet')?.025:0)+Math.max(0,weather.temperature-33)*.008,.01,.21));const raceTime=laps*(96-(pace-70)*.22)+(gridPos-1)*.12+(rng.next()-.5)*12;return{driverId:driver.id,teamId:driver.teamId,grid:gridPos,score:pace,time:raceTime,status:dnf?'DNF':'Running',lapsCompleted:dnf?Math.max(3,laps-rng.int(2,18)):laps,points:0};});
   const running=rows.filter((row)=>row.status==='Running').sort((a,b)=>a.time-b.time);const retired=rows.filter((row)=>row.status!=='Running').sort((a,b)=>b.lapsCompleted-a.lapsCompleted);const ordered=[...running,...retired];const leader=running[0]?.time||ordered[0]?.time||0;
-  ordered.forEach((row,index)=>{row.position=index+1;row.points=row.status==='Running'?(points[index]||0):0;row.gap=index===0?seconds(leader):row.status==='Running'?`+${(row.time-leader).toFixed(3)}s`:`DNF (${row.lapsCompleted} laps)`;const driver=getDriver(universe,row.driverId);driver.season.points+=row.points;driver.season.wins+=index===0?1:0;driver.season.podiums+=index<3?1:0;driver.season.starts+=1;driver.season.dnfs+=row.status!=='Running'?1:0;driver.season.form.push(index+1);driver.season.form=driver.season.form.slice(-5);driver.confidence=clamp(driver.confidence+(index<3?2:index>15?-1:0),30,96);const team=teams.find((item)=>item.id===row.teamId);if(team){team.points=(team.points||0)+row.points;team.wins=(team.wins||0)+(index===0?1:0);}});
+  ordered.forEach((row,index)=>{row.position=index+1;row.points=row.status==='Running'?(points[index]||0):0;row.gap=index===0?seconds(leader):row.status==='Running'?`+${(row.time-leader).toFixed(3)}s`:`DNF (${row.lapsCompleted} laps)`;const driver=getDriver(universe,row.driverId);driver.season.points+=row.points;driver.season.wins+=index===0?1:0;driver.season.podiums+=index<3?1:0;driver.season.starts+=1;driver.season.dnfs+=row.status!=='Running'?1:0;driver.season.form.push(index+1);driver.season.form=driver.season.form.slice(-5);driver.confidence=clamp(driver.confidence+(index<3?2:index>15?-1:0),30,96);const team=teams.find((item)=>item.id===row.teamId);if(team){team.points=(team.points||0)+row.points;team.wins=(team.wins||0)+(index===0?1:0);team.season=team.season||{points:0,wins:0,poles:0,podiums:0};team.season.points=(team.season.points||0)+row.points;team.season.wins=(team.season.wins||0)+(index===0?1:0);team.season.podiums=(team.season.podiums||0)+(index<3?1:0);}});
   const fastest=[...running].sort((a,b)=>b.score-a.score)[0];const fastestLapTime=fastest?Number(Math.max(45,lapTimeFromScore(fastest.score+4,event,'Race',rng)-1.8).toFixed(3)):null;
   if(fastest){universe.records.fastestLaps.unshift({year:universe.year,series,round:event.round,eventId:event.id,circuitId:event.circuitId||event.id,driverId:fastest.driverId,driverName:getDriver(universe,fastest.driverId)?.name,time:fastestLapTime});universe.records.fastestLaps=universe.records.fastestLaps.slice(0,240);}
   return{key:'R',label:series==='WEC'?'Endurance Race':'Race',weather:weather.state,temperature:weather.temperature,thermal:weather.thermal,timeline,laps,rows:ordered,winnerId:ordered[0]?.driverId,fastestLapDriverId:fastest?.driverId||null,fastestLapTime};
@@ -454,7 +452,7 @@ function simulateFeederRound(universe,series,seed){
   const fp1=simulateSupportPractice(universe,series,event,drivers,teams,fp1Weather,rng,'FP1');const fp2=simulateSupportPractice(universe,series,event,drivers,teams,fp2Weather,rng,'FP2');
   const q1Cut=Math.max(10,drivers.length-5);const q2Cut=Math.max(8,Math.min(12,q1Cut-5));const q3Cut=Math.min(10,q2Cut);
   const q1=supportQualifyingRound(universe,event,drivers,teams,qWeather,rng,'Q1',q1Cut);const q2Drivers=q1.rows.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId));const q2=supportQualifyingRound(universe,event,q2Drivers,teams,qWeather,rng,'Q2',q2Cut);const q3Drivers=q2.rows.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId));const q3=supportQualifyingRound(universe,event,q3Drivers,teams,qWeather,rng,'Q3',q3Cut);
-  const finalQualifying=[...q3.rows,...q2.rows.slice(q2Cut),...q1.rows.slice(q1Cut)].map((row,index)=>({...row,position:index+1}));const pole=getDriver(universe,finalQualifying[0]?.driverId);if(pole){pole.season.poles=(pole.season.poles||0)+1;}
+  const finalQualifying=[...q3.rows,...q2.rows.slice(q2Cut),...q1.rows.slice(q1Cut)].map((row,index)=>({...row,position:index+1}));const pole=getDriver(universe,finalQualifying[0]?.driverId);if(pole){pole.season.poles=(pole.season.poles||0)+1;const poleTeam=teams.find((team)=>team.id===pole.teamId);if(poleTeam){poleTeam.season=poleTeam.season||{points:0,wins:0,poles:0,podiums:0};poleTeam.season.poles=(poleTeam.season.poles||0)+1;}}
   const race=simulateSupportRace(universe,series,event,drivers,teams,finalQualifying.map((row)=>row.driverId),raceWeather,rng);const winner=getDriver(universe,race.winnerId);const winnerTeam=getTeam(universe,winner?.teamId);
   const record={id:`${universe.year}-${series}-${event.round}`,year:universe.year,series,eventId:event.id,circuitId:event.circuitId||event.id,round:event.round,event:{id:event.id,circuitId:event.circuitId||event.id,country:event.country,city:event.city,name:event.name,traits:event.traits,rain:event.rain,temp:event.temp},sessions:{FP1:fp1,FP2:fp2,Q1:q1,Q2:q2,Q3:q3,R:race},winnerId:winner?.id||null,teamWinnerId:winnerTeam?.id||null,poleId:pole?.id||null,podium:race.rows.slice(0,3).map((row)=>({driverId:row.driverId,teamId:row.teamId,position:row.position})),fastestLapDriverId:race.fastestLapDriverId,fastestLapTime:race.fastestLapTime,weather:{qualifying:qWeather.state,qualifyingTemperature:qWeather.temperature,race:raceWeather.state,raceTemperature:raceWeather.temperature,timeline:race.timeline}};
   universe.competitionEventResults[series].push(record);universe.feederResults[series].push({year:universe.year,round:event.round,eventId:event.id,rows:race.rows,winnerId:record.winnerId});event.status='Complete';
@@ -502,7 +500,7 @@ function buildF1EventRecord(universe,event,raceResult){
 
 function applyDevelopment(universe,event,rng){
   if(event.round%3!==0) return;
-  const candidates=universe.teams.map((team)=>{const tech=teamStaffRating(universe,team,'Technical Director');const test=testDriverContribution(universe,team);const confidence=(team.facilities.aero+team.facilities.simulator+tech+test)/4;const gain=clamp((confidence-70)/68+rng.next()*.62,.05,1.25);const risk=clamp((100-confidence)/180,.03,.22);return{team,gain,failed:rng.chance(risk)};});
+  const candidates=universe.teams.map((team)=>{const tech=teamStaffRating(universe,team,'Technical Director');const test=testDriverContribution(universe,team);const facility=((team.facilities.aero||5)+(team.facilities.simulator||5))*5;const confidence=(facility+tech+test)/3;const gain=clamp((confidence-70)/68+rng.next()*.62,.05,1.25);const risk=clamp((100-confidence)/180,.03,.22);return{team,gain,failed:rng.chance(risk)};});
   candidates.forEach(({team,gain,failed})=>{
     const dimension=rng.pick(['high','low','straight','tyre','mechanical','energy','reliability','operations']);
     const applied=failed?-gain*.35:gain; team.car[dimension]=clamp(team.car[dimension]+applied,60,99);team.season.development+=applied;
@@ -569,14 +567,10 @@ export function simulateNextSession(sourceUniverse){
     universe.competitionEventResults=universe.competitionEventResults||{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]};
     universe.competitionEventResults.F1.push(buildF1EventRecord(universe,event,result));
     maybeCreateDriverInjury(universe,data,rng);
-    ['F2','F3','F4'].forEach((series)=>simulateFeederRound(universe,series,event.weekendSeed+universe.year));
-    if(event.round%2===0) simulateFeederRound(universe,'FE',event.weekendSeed+universe.year+57);
-    if(event.round%3===0) simulateFeederRound(universe,'WEC',event.weekendSeed+universe.year+91);
     applyDevelopment(universe,event,rng); updatePowerRankings(universe,event);
     universe.currentRound+=1; universe.currentSession=0;
     if(universe.currentRound>=universe.calendar.length){
-      universe.phase='Season complete'; universe.currentRound=universe.calendar.length-1; universe.currentSession=event.sessions.length;
-      finalizeSeasonAwards(universe);
+      universe.phase='Support series remaining'; universe.currentRound=universe.calendar.length; universe.currentSession=0;
     }
   } else {
     universe.currentSession+=1;
@@ -589,9 +583,43 @@ export function simulateWeekend(sourceUniverse){
   while(universe.phase!=='Season complete'&&universe.currentRound===startRound&&guard<8){universe=simulateNextSession(universe);guard+=1;}
   return universe;
 }
+function allSeriesComplete(universe){
+  return ['F1','F2','F3','F4','FE','WEC'].every((series)=>(universe.competitionEventResults?.[series]?.length||0)>=(universe.competitionCalendars?.[series]?.length||0));
+}
+function simulateWorldWeekMutable(universe,week){
+  universe.currentWeek=week;
+  const due=[];
+  ['F1','F2','F3','F4','FE','WEC'].forEach((series)=>{
+    const calendar=universe.competitionCalendars?.[series]||[];
+    calendar.filter((event)=>event.status!=='Complete'&&(event.week||event.round*2)<=week).forEach((event)=>due.push({series,event}));
+  });
+  due.sort((a,b)=>(a.event.week||0)-(b.event.week||0)||(['F4','F3','F2','FE','WEC','F1'].indexOf(a.series)-['F4','F3','F2','FE','WEC','F1'].indexOf(b.series)));
+  due.forEach(({series,event})=>{
+    if(series==='F1'){
+      if(universe.currentRound<universe.calendar.length&&universe.calendar[universe.currentRound]?.id===event.id){
+        universe=simulateWeekend(universe);
+      }
+    }else if(event.status!=='Complete'){
+      simulateFeederRound(universe,series,event.weekendSeed+universe.year+week*17);
+    }
+  });
+  if(allSeriesComplete(universe)){
+    universe.phase='Season complete';
+    universe.currentWeek=52;
+    finalizeSeasonAwards(universe);
+  }else if(universe.phase!=='Season complete')universe.phase='In season';
+  return universe;
+}
+export function simulateWeeks(sourceUniverse,weeks=1){
+  let universe=deepClone(sourceUniverse);
+  if(universe.phase==='Season complete')return universe;
+  const target=Math.min(52,(universe.currentWeek||1)+Math.max(1,weeks));
+  for(let week=(universe.currentWeek||1)+1;week<=target;week+=1)universe=simulateWorldWeekMutable(universe,week);
+  return universe;
+}
 export function simulateToSeasonEnd(sourceUniverse){
-  let universe=sourceUniverse; let guard=0;
-  while(universe.phase!=='Season complete'&&guard<180){universe=simulateNextSession(universe);guard+=1;}
+  let universe=deepClone(sourceUniverse);let guard=0;
+  while(universe.phase!=='Season complete'&&guard<54){universe=simulateWorldWeekMutable(universe,Math.min(52,(universe.currentWeek||1)+1));guard+=1;if((universe.currentWeek||1)>=52&&!allSeriesComplete(universe)){['F1','F2','F3','F4','FE','WEC'].forEach((series)=>{const calendar=universe.competitionCalendars?.[series]||[];calendar.filter((event)=>event.status!=='Complete').forEach((event)=>{if(series==='F1'&&universe.currentRound<universe.calendar.length)universe=simulateWeekend(universe);else if(series!=='F1')simulateFeederRound(universe,series,event.weekendSeed+universe.year+guard);});});if(allSeriesComplete(universe)){universe.phase='Season complete';finalizeSeasonAwards(universe);}}}
   return universe;
 }
 
@@ -636,7 +664,7 @@ export function powerRankings(universe,type='drivers'){
     return{...team,powerScore:score};
   }).sort((a,b)=>b.powerScore-a.powerScore);
   return currentF1Drivers(universe).map((driver)=>{
-    const team=getTeam(universe,driver.teamId); const form=avg(driver.season.form.map((p)=>23-p)); const score=driver.baseTalent*careerMultiplier(driver)*.47+avg(Object.values(driver.skills))*.22+avg(Object.values(team.car))*.22+form*.45+driver.confidence*.09;
+    const team=getTeam(universe,driver.teamId); const form=avg(driver.season.form.map((p)=>23-p)); const score=driver.baseTalent*careerMultiplier(driver)*.47+avg(Object.keys(driver.skills||{}).map((key)=>effectiveDriverSkill(driver,key)))*.22+avg(Object.values(team.car))*.22+form*.45+driver.confidence*.09;
     return{...driver,powerScore:score};
   }).sort((a,b)=>b.powerScore-a.powerScore);
 }
@@ -644,7 +672,7 @@ export function powerRankings(universe,type='drivers'){
 export function goatScore(universe,driver,mode='F1'){
   const c=driver.career; const rarity=RARITY[driver.rarity]?.legacy||1;
   const f1=c.titles*180+c.f1Wins*12+c.f1Podiums*3.8+c.f1Poles*4+c.f1Points*.12+c.f1Starts*.08;
-  const context=(driver.season.positionsGained||0)*.25+(driver.season.wetScore||0)*.35+driver.skills.wet*.15+driver.skills.consistency*.12;
+  const context=(driver.season.positionsGained||0)*.25+(driver.season.wetScore||0)*.35+effectiveDriverSkill(driver,'wet')*.15+effectiveDriverSkill(driver,'consistency')*.12;
   const cross=c.feTitles*70+c.wecTitles*75+c.leMansWins*48+c.seriesTitles*24;
   const peak=driver.baseTalent*careerMultiplier(driver)*2.4+driver.fame*.7;
   if(mode==='Peak') return (peak+context)*rarity;
@@ -731,7 +759,7 @@ function recordTransfer(universe,driver,from,to,reason){
 }
 function moveWithMarket(universe,driver,newSeries,newTeamId,role,seat,salary,reason){
   const oldTeam=getTeam(universe,driver.teamId);const from={teamId:oldTeam?.id||null,teamName:oldTeam?.name||((driver.role==='Free agent'||driver.series==='FREE')?'Free agents':'Independent'),series:driver.series,seat:driver.seat||0,role:driver.role,salary:driver.contract?.salary||0};
-  moveDriver(universe,driver,newSeries,newTeamId,role,seat);const newTeam=getTeam(universe,newTeamId);applyPromisedSeatHierarchy(universe,driver,newTeam,newSeries,seat);driver.contract={through:universe.year+(newSeries==='F1'?rngContract(driver):2),salary:Math.max(1,Math.round(salary)),status:role==='Race driver'?'Signed':role};driver.salaryDemand=expectedSalary(driver,newSeries,driver.seat);
+  moveDriver(universe,driver,newSeries,newTeamId,role,seat);driver.teamJoinedYear=universe.year+1;driver.promisedSeat=role==='Race driver'?(seat||null):null;driver.seatPromiseThrough=role==='Race driver'&&seat?universe.year+1:null;const newTeam=getTeam(universe,newTeamId);applyPromisedSeatHierarchy(universe,driver,newTeam,newSeries,seat);driver.contract={through:universe.year+(newSeries==='F1'?rngContract(driver):2),salary:Math.max(1,Math.round(salary)),status:role==='Race driver'?'Signed':role};driver.salaryDemand=expectedSalary(driver,newSeries,driver.seat);
   const to={teamId:newTeam?.id||null,teamName:newTeam?.name||'Free agents',series:newSeries,seat:driver.seat||0,role,salary:driver.contract.salary};recordTransfer(universe,driver,from,to,reason);return{from,to};
 }
 function rngContract(driver){return driver.age<23?3:2;}
@@ -740,11 +768,17 @@ function willingnessScore(driver,series,seat,salary){
   const promotion=(level-current)*10;const roleGain=(driver.seat||3)-seat;const moneyGain=(salary-(driver.contract?.salary||0))*1.2;const discontent=(70-(driver.happiness?.overall||65))*.65;return promotion+roleGain*7+moneyGain+discontent;
 }
 function lowestRaceDriver(universe,team,series){return universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId===team.id).sort((a,b)=>observedDriverValue(a)-observedDriverValue(b)||a.season.points-b.season.points)[0];}
+function syncTeamHierarchyAndEngineers(universe,team){
+  const roster=assignRosterHierarchy(universe.drivers,team.id,universe.year);
+  const engineers=(team.staffIds||[]).map((id)=>getStaff(universe,id)).filter((member)=>member?.role==='Race Engineer').sort((a,b)=>b.rating-a.rating);
+  roster.forEach((driver,index)=>{const engineer=engineers[index];driver.engineerId=engineer?.id||null;if(engineer){engineer.assignedDriverId=driver.id;engineer.assignedSeat=driver.seat;}});
+  engineers.slice(roster.length).forEach((engineer)=>{engineer.assignedDriverId=null;engineer.assignedSeat=null;});
+}
 function seatMarket(universe,rng){
   updateDriverHappiness(universe);universe.marketHistory=(universe.marketHistory||[]).filter((entry)=>entry.year>=universe.year-4);
   const completedYear=universe.year;const nextYear=universe.year+1;const moved=new Set();let moves=0;
   // First assign explicit first/second-driver hierarchy from current observed status, while preserving a successful champion as leader.
-  universe.teams.forEach((team)=>{const roster=universe.drivers.filter((d)=>d.active&&d.series==='F1'&&d.role==='Race driver'&&d.teamId===team.id).sort((a,b)=>b.season.points-a.season.points||observedDriverValue(b)-observedDriverValue(a));roster.forEach((driver,index)=>{driver.seat=index+1;});});
+  universe.teams.forEach((team)=>syncTeamHierarchyAndEngineers(universe,team));
   const destinationTeams=[...universe.teams].sort((a,b)=>marketTeamBudget(b,'F1')-marketTeamBudget(a,'F1')||a.season.points-b.season.points);
   for(const team of destinationTeams){
     if(moves>=4)break;const roster=universe.drivers.filter((d)=>d.active&&d.series==='F1'&&d.role==='Race driver'&&d.teamId===team.id);if(roster.length<2)continue;
@@ -854,13 +888,11 @@ function fillAllSeriesSeats(universe,rng){
       test.role='Test driver';test.isEmergencyReserve=true;test.contract.salary=Math.max(2,Math.round(test.contract.salary*.32));
       universe.drivers.push(test);team.testDriverIds=team.testDriverIds||[];team.testDriverIds.push(test.id);tests.push(test);
     }
-    const raceRoster=universe.drivers.filter((driver)=>driver.active&&driver.series==='F1'&&driver.role==='Race driver'&&driver.teamId===team.id).sort((a,b)=>b.season.points-a.season.points||observedDriverValue(b)-observedDriverValue(a));
-    raceRoster.forEach((driver,index)=>{driver.seat=index+1;});
+    syncTeamHierarchyAndEngineers(universe,team);
     tests.forEach((driver)=>{driver.seat=3;});
   });
   Object.entries(universe.feederTeams||{}).forEach(([series,teams])=>teams.forEach((team)=>{
-    const roster=universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId===team.id).sort((a,b)=>(a.seat||9)-(b.seat||9)||observedDriverValue(b)-observedDriverValue(a));
-    roster.forEach((driver,index)=>{driver.seat=index+1;});
+    assignRosterHierarchy(universe.drivers,team.id,universe.year);
   }));
 }
 
@@ -896,13 +928,22 @@ function updateTeamsAndSponsors(universe,rng){
   const lastConstructors=new Map((universe.teams||[]).map((team)=>[team.id,team.career.seasons.at(-1)?.position||universe.teams.length]));
   universe.teams.forEach((team)=>{
     const tech=teamStaffRating(universe,team,'Technical Director');
-    const facility=avg(Object.values(team.facilities));
+    Object.keys(team.facilities||{}).forEach((key)=>{team.facilities[key]=clamp((team.facilities[key]||5)-(.12+rng.next()*.28),1,10);});
+    const preInvestmentCash=team.finances?.cash||0;
+    const investCapacity=Math.max(0,(team.finances?.projectedBalance||0)+Math.max(0,preInvestmentCash-150)*.12);
+    let facilityInvestment=0;
+    if(investCapacity>18){
+      const weakest=Object.entries(team.facilities).sort((a,b)=>a[1]-b[1]).slice(0,investCapacity>70?2:1);
+      weakest.forEach(([key])=>{const gain=clamp(.25+investCapacity/180+rng.next()*.28,.25,1.05);team.facilities[key]=clamp(team.facilities[key]+gain,1,10);facilityInvestment+=Math.round(gain*18);});
+    }
+    const facility=avg(Object.values(team.facilities))*10;
     const test=testDriverContribution(universe,team);
     const reset=universe.year%4===0?.52:.18;
     Object.keys(team.car).forEach((key)=>{
       const target=tech*.31+facility*.29+test*.12+(getEngine(universe,team.engineId)?.trajectory||84)*.28;
       team.car[key]=clamp(team.car[key]*(1-reset)+target*reset+(rng.next()-.5)*2.8,62,98);
     });
+    team.finances.facilityInvestment=facilityInvestment;
     team.baseline=avg(Object.values(team.car));
 
     const brand=getMainBrand(universe,team.mainBrandId)||MAIN_BRANDS[0];
@@ -917,8 +958,8 @@ function updateTeamsAndSponsors(universe,rng){
     const prizeMoney=Math.round(170-(position-1)*11+team.heritage*.28);
     const driverCost=[...raceDrivers,...testDrivers].reduce((sum,driver)=>sum+(driver.contract?.salary||0),0);
     const staffCost=(team.staffIds||[]).map((id)=>getStaff(universe,id)).filter(Boolean).reduce((sum,member)=>sum+(member.salary||8),0);
-    const developmentCost=Math.round(70+avg(Object.values(team.facilities))*.75+Math.max(0,team.baseline-75)*2.2);
-    const operatingCost=Math.round(205+team.baseline*1.38+avg(Object.values(team.facilities))*.72);
+    const developmentCost=Math.round(55+avg(Object.values(team.facilities))*6.5+Math.max(0,team.baseline-75)*2.2+(team.finances.facilityInvestment||0));
+    const operatingCost=Math.round(180+team.baseline*1.28+avg(Object.values(team.facilities))*5.2);
     const mainFunding=brand.funding;
     const totalIncome=mainFunding+secondaryIncome+prizeMoney;
     const totalExpenses=driverCost+staffCost+team.finances.engineCost+developmentCost+operatingCost;
@@ -995,25 +1036,83 @@ function updateTeamsAndSponsors(universe,rng){
   }
 }
 
-function updateStaffMarket(universe,rng){
-  if(!rng.chance(.52))return;
-  const ordered=[...universe.teams].sort((a,b)=>b.baseline-a.baseline);
-  const hiring=rng.pick(ordered.slice(0,4));const source=rng.pick(ordered.slice(-5));
-  const candidates=source.staffIds.map((id)=>getStaff(universe,id)).filter((member)=>member&&member.role!=='Race Engineer'&&member.ambition>62).sort((a,b)=>b.rating-a.rating);
-  const recruit=candidates[0];if(!recruit)return;
-  const incumbent=hiring.staffIds.map((id)=>getStaff(universe,id)).filter((member)=>member?.role===recruit.role).sort((a,b)=>a.rating-b.rating)[0];if(!incumbent)return;
+function updateSupportTeams(universe,rng){
+  const economics={
+    F2:{income:72,expense:64,carMin:63,carMax:93,invest:8},
+    F3:{income:43,expense:39,carMin:57,carMax:89,invest:5},
+    F4:{income:26,expense:24,carMin:50,carMax:84,invest:3},
+    FE:{income:96,expense:86,carMin:65,carMax:94,invest:10},
+    WEC:{income:112,expense:101,carMin:66,carMax:95,invest:12},
+  };
+  Object.entries(universe.feederTeams||{}).forEach(([series,teams])=>{
+    const model=economics[series]||economics.F3;
+    const order=[...teams].sort((a,b)=>(b.points||0)-(a.points||0)||(b.wins||0)-(a.wins||0));
+    teams.forEach((team)=>{
+      Object.keys(team.facilities||{}).forEach((key)=>{team.facilities[key]=clamp((team.facilities[key]||5)-(.10+rng.next()*.24),1,10);});
+      const priorBalance=team.finances?.projectedBalance||0;
+      const cash=team.finances?.cash||0;
+      const investPower=Math.max(0,priorBalance+Math.max(0,cash-model.income)*.16);
+      let facilityInvestment=0;
+      if(investPower>model.invest){
+        const count=investPower>model.invest*4?2:1;
+        Object.entries(team.facilities).sort((a,b)=>a[1]-b[1]).slice(0,count).forEach(([key])=>{
+          const gain=clamp(.18+investPower/(model.income*5)+rng.next()*.24,.18,.85);
+          team.facilities[key]=clamp(team.facilities[key]+gain,1,10);
+          facilityInvestment+=Math.round(gain*model.invest);
+        });
+      }
+      const technical=teamStaffRating(universe,team,'Technical Director');
+      const facility=avg(Object.values(team.facilities))*10;
+      const reset=universe.year%4===0?.42:.16;
+      Object.keys(team.carProfile||{}).forEach((key)=>{
+        const roleWeight=key==='reliability'?(team.facilities.manufacturing||5)*10:(team.facilities.aero||5)*10;
+        const target=technical*.38+facility*.34+roleWeight*.18+(team.rating||team.baseline||72)*.10;
+        team.carProfile[key]=clamp(team.carProfile[key]*(1-reset)+target*reset+(rng.next()-.5)*2.5,model.carMin,model.carMax);
+      });
+      team.baseline=avg(Object.values(team.carProfile||{}));team.rating=team.baseline;
+      const position=Math.max(1,order.findIndex((item)=>item.id===team.id)+1);
+      const staffCost=(team.staffIds||[]).map((id)=>getStaff(universe,id)).filter(Boolean).reduce((sum,member)=>sum+(member.salary||1),0);
+      const prize=Math.max(1,Math.round(model.income*.34-position*1.6));
+      const income=Math.round(model.income+team.baseline*.18+prize+(rng.next()-.5)*6);
+      const expenses=Math.round(model.expense+team.baseline*.15+staffCost+facilityInvestment);
+      const balance=income-expenses;
+      team.finances={...(team.finances||{}),mainFunding:Math.round(income-prize),prizeMoney:prize,totalIncome:income,totalExpenses:expenses,income,expenses,staffCost,facilityInvestment,projectedBalance:balance,cash:Math.round(cash+balance*.42)};
+      team.season={points:0,wins:0,poles:0,podiums:0};team.points=0;team.wins=0;
+    });
+  });
+}
+
+function exchangeStaffWithinGroup(universe,rng,teams,series){
+  if(!teams?.length||teams.length<3)return false;
+  const ordered=[...teams].sort((a,b)=>(b.baseline||b.rating||0)-(a.baseline||a.rating||0));
+  const hiring=rng.pick(ordered.slice(0,Math.max(2,Math.ceil(ordered.length*.4))));
+  const sourcePool=ordered.slice(Math.max(1,Math.floor(ordered.length*.45))).filter((team)=>team.id!==hiring?.id);
+  const source=rng.pick(sourcePool);if(!hiring||!source)return false;
+  const candidates=(source.staffIds||[]).map((id)=>getStaff(universe,id)).filter((member)=>member&&member.ambition>60).sort((a,b)=>b.rating-a.rating);
+  const recruit=candidates[0];if(!recruit)return false;
+  const incumbent=(hiring.staffIds||[]).map((id)=>getStaff(universe,id)).filter((member)=>member?.role===recruit.role).sort((a,b)=>a.rating-b.rating)[0];if(!incumbent||incumbent.rating>=recruit.rating&&rng.chance(.72))return false;
   source.staffIds=source.staffIds.filter((id)=>id!==recruit.id);hiring.staffIds=hiring.staffIds.filter((id)=>id!==incumbent.id);
   source.staffIds.push(incumbent.id);hiring.staffIds.push(recruit.id);
   recruit.history.push({year:universe.year,teamId:recruit.teamId,role:recruit.role});incumbent.history.push({year:universe.year,teamId:incumbent.teamId,role:incumbent.role});
-  const oldSource=recruit.teamId;recruit.teamId=hiring.id;incumbent.teamId=source.id;recruit.contractThrough=universe.year+rng.int(3,5);incumbent.contractThrough=universe.year+rng.int(1,3);
-  createStory(universe,{category:'Driver Market',headline:`${hiring.name} poaches ${recruit.name} from ${source.name}`,dek:`The ${recruit.role.toLowerCase()} will complete a negotiated transition rather than an instant move. Staff rarity, ambition, specialty and organizational chemistry now reshape the technical order.`,priority:76,subjects:[hiring.id,source.id,recruit.id,oldSource],round:0});
+  const oldSource=recruit.teamId;recruit.teamId=hiring.id;incumbent.teamId=source.id;recruit.teamJoinedYear=universe.year;incumbent.teamJoinedYear=universe.year;recruit.contractThrough=universe.year+rng.int(3,5);incumbent.contractThrough=universe.year+rng.int(1,3);
+  syncTeamHierarchyAndEngineers(universe,hiring);syncTeamHierarchyAndEngineers(universe,source);
+  createStory(universe,{category:'Staff Market',headline:`${hiring.name} poaches ${recruit.name} from ${source.name}`,dek:`The ${recruit.rarity} ${recruit.role.toLowerCase()} moves within ${series}. Staff quality is visible throughout the universe, and race engineers remain explicitly assigned to their drivers.`,priority:series==='F1'?78:62,subjects:[hiring.id,source.id,recruit.id,oldSource],round:0});
+  return true;
 }
+
+function updateStaffMarket(universe,rng){
+  if(rng.chance(.58))exchangeStaffWithinGroup(universe,rng,universe.teams,'F1');
+  const supportSeries=Object.keys(universe.feederTeams||{}).filter((series)=>rng.chance(.30));
+  supportSeries.slice(0,2).forEach((series)=>exchangeStaffWithinGroup(universe,rng,universe.feederTeams[series],series));
+}
+
 
 export function advanceToNextSeason(sourceUniverse){
   const universe=deepClone(sourceUniverse); if(universe.phase!=='Season complete')return universe;
   finalizeSeasonAwards(universe);
   const standings=driverStandings(universe,'F1'); const constructors=constructorStandings(universe); const champion=standings[0]; const constructor=constructors[0];
   universe.teams.forEach((team)=>{const place=constructors.findIndex((item)=>item.id===team.id)+1;team.career.seasons.push({year:universe.year,position:place,points:team.season.points,wins:team.season.wins,podiums:team.season.podiums,poles:team.season.poles,engineId:team.engineId,name:team.name});});
+  Object.entries(universe.feederTeams||{}).forEach(([series,teams])=>{const order=[...teams].sort((a,b)=>(b.points||0)-(a.points||0)||(b.wins||0)-(a.wins||0));teams.forEach((team)=>{team.career=team.career||{seasons:[]};team.career.seasons.push({year:universe.year,series,position:order.findIndex((item)=>item.id===team.id)+1,points:team.points||0,wins:team.wins||0,name:team.name});});});
   const compressedRaces=universe.raceResults.map((result)=>({eventId:result.eventId,round:result.round,winnerId:result.data.winnerId,winnerName:getDriver(universe,result.data.winnerId)?.name||'—',podium:result.data.rows.slice(0,3).map((row)=>({driverId:row.driverId,driverName:getDriver(universe,row.driverId)?.name||'—',teamId:row.teamId})),weather:[...new Set(result.data.timeline||[])],safetyCar:Boolean(result.data.safetyCar),virtualSafetyCar:Boolean(result.data.virtualSafetyCar),redFlag:Boolean(result.data.redFlag),fastestLapDriverId:result.data.fastestLapDriverId||null}));
   const seriesArchive={};
   ['F1','F2','F3','F4','FE','WEC'].forEach((series)=>{
@@ -1037,12 +1136,12 @@ export function advanceToNextSeason(sourceUniverse){
   addNewProspects(universe,rng);
   fillAllSeriesSeats(universe,rng);
   universe.year+=1;universe.seasonIndex+=1;
-  updateTeamsAndSponsors(universe,rng); updateStaffMarket(universe,rng); updateCalendar(universe,rng);
-  Object.values(universe.feederTeams).flat().forEach((team)=>{team.points=0;team.wins=0;});
+  updateTeamsAndSponsors(universe,rng);updateSupportTeams(universe,rng);updateStaffMarket(universe,rng);updateCalendar(universe,rng);
+  [...universe.teams,...Object.values(universe.feederTeams||{}).flat()].forEach((team)=>syncTeamHierarchyAndEngineers(universe,team));
   universe.calendar=universe.calendar.map((event,index)=>({...event,round:index+1,status:'Upcoming',sessions:[],weekendSeed:universe.seed+universe.year*101+index*1009}));
   universe.competitionCalendars=universe.competitionCalendars||{};universe.competitionCalendars.F1=universe.calendar;
   Object.keys(universe.competitionCalendars).filter((series)=>series!=='F1').forEach((series)=>{universe.competitionCalendars[series]=universe.competitionCalendars[series].map((event,index)=>({...event,round:index+1,status:'Upcoming',sessions:[],weekendSeed:universe.seed+universe.year*131+series.charCodeAt(1)*10007+index*1301}));});
-  universe.currentRound=0;universe.currentSession=0;universe.phase='Pre-season';universe.sessionResults=[];universe.raceResults=[];universe.feederResults={F2:[],F3:[],F4:[],FE:[],WEC:[]};universe.competitionEventResults={F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]};
+  universe.currentWeek=1;universe.currentRound=0;universe.currentSession=0;universe.phase='Pre-season';universe.sessionResults=[];universe.raceResults=[];universe.feederResults={F2:[],F3:[],F4:[],FE:[],WEC:[]};universe.competitionEventResults={F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]};
   createStory(universe,{category:'Pre-season',headline:`The ${universe.year} grid returns with a changed competitive order`,dek:`Regulation carry-over, staff quality, facilities, engine trajectories and winter correlation have reset the margins without making last year's quality irrelevant.`,priority:100,round:0,thread:'technical-race'});
   return universe;
 }

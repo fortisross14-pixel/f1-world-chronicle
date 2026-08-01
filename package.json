@@ -1,14 +1,15 @@
 {
   "name": "f1-world-chronicle",
   "private": true,
-  "version": "1.3.1",
+  "version": "1.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "node ./node_modules/vite/bin/vite.js build",
     "preview": "vite preview",
     "smoke": "node scripts/smoke.mjs",
-    "deterministic": "node scripts/deterministic.mjs"
+    "deterministic": "node scripts/deterministic.mjs",
+    "universe-v4": "node scripts/universe-v4.mjs"
   },
   "dependencies": {
     "react": "^19.1.1",

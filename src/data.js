@@ -1,12 +1,12 @@
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const RARITY = {
-  Generational: { min: 95, max: 99, color: '#ffd34e', legacy: 1.28 },
-  Legend: { min: 90, max: 94, color: '#e39aff', legacy: 1.16 },
-  Epic: { min: 85, max: 89, color: '#9f88ff', legacy: 1.08 },
-  Rare: { min: 80, max: 84, color: '#55b7ff', legacy: 1.02 },
-  Uncommon: { min: 72, max: 79, color: '#69d58c', legacy: 0.98 },
-  Common: { min: 64, max: 71, color: '#a6a6ae', legacy: 0.94 },
+  Generational: { min: 95, max: 99, color: '#e10600', legacy: 1.28 },
+  Legend: { min: 90, max: 94, color: '#f4c542', legacy: 1.16 },
+  Epic: { min: 85, max: 89, color: '#a86bff', legacy: 1.08 },
+  Rare: { min: 80, max: 84, color: '#4da8ff', legacy: 1.02 },
+  Uncommon: { min: 72, max: 79, color: '#55c978', legacy: 0.98 },
+  Common: { min: 64, max: 71, color: '#f4f4f6', legacy: 0.94 },
 };
 
 export const SERIES_META = {
@@ -241,9 +241,10 @@ function createDriver({ rng, id, series, teamId, seat, rarity, age, country, roo
     'Complete driver':rng.pick(TRACK_SPECIALTIES),
   };
   const trackSpecialty=specialtyByStyle[style]||rng.pick(TRACK_SPECIALTIES);
-  const debutAge = series === 'F1' ? Math.max(18, age - rng.int(0, 5)) : series === 'F2' ? 17 : series === 'F3' ? 16 : series === 'F4' ? 15 : Math.max(18, age - rng.int(0, 6));
-  const careerLength = series === 'F1' ? rng.int(10, 15) : rng.int(8, 15);
-  const peakAge = rng.int(26, 31);
+  const debutAge = series === 'F1' ? rng.int(18,Math.max(18,Math.min(age,24))) : series === 'F2' ? rng.int(17,Math.max(17,Math.min(age,20))) : series === 'F3' ? 16 : series === 'F4' ? 15 : rng.int(18,Math.max(18,Math.min(age,25)));
+  const remainingYears = (series==='F1'||series==='FE'||series==='WEC') ? rng.int(1,8) : rng.int(2,7);
+  const careerLength = Math.max(7,Math.min(24,(age-debutAge)+remainingYears));
+  const peakAge = rng.int(25,31);
   const curve = createCareerCurve(rng, debutAge, careerLength, peakAge);
   const curveIndex = Math.max(0, Math.min(curve.length - 1, age - debutAge));
   const skills = skillSet(rng, baseTalent, style);
@@ -260,7 +261,8 @@ function createDriver({ rng, id, series, teamId, seat, rarity, age, country, roo
     contract: { through: 2026 + rng.int(1, 3), salary: Math.max(1,Math.round(salaryBase*salaryScale)), status: 'Signed' },
     salaryDemand:Math.max(1,Math.round(demandBase*salaryScale)),
     happiness:{overall:rng.int(54,78),role:rng.int(52,78),results:rng.int(50,76),salary:rng.int(52,78),ambition:rng.int(55,96),reasons:[]},
-    academy, rookie, active: true, role: 'Race driver', engineerId: null, injuryUntilRound:null,
+    academy, rookie, active: true, role: 'Race driver', engineerId: null, injuryUntilRound:null, promisedSeat:null, seatPromiseThrough:null,
+    teamJoinedYear:2026-Math.min(Math.max(0,age-debutAge),rng.int(0,6)),yearsInSeries:Math.max(0,age-debutAge),
     observedRating:Math.round(baseTalent*(curve[curveIndex]||.9)*(0.975+rng.next()*.05)),
     season: { points:0,wins:0,poles:0,podiums:0,starts:0,dnfs:0,bestFinish:null,qualifyingPoints:0,positionsGained:0,wetScore:0,form:[] },
     career: { f1Starts:0,f1Wins:0,f1Poles:0,f1Podiums:0,f1Points:0,titles:0,seriesTitles:0,leMansWins:0,feTitles:0,wecTitles:0,bestFinish:null,seasons:[] },
@@ -268,10 +270,46 @@ function createDriver({ rng, id, series, teamId, seat, rarity, age, country, roo
   };
 }
 
+export function effectiveDriverSkill(driver,key){
+  const raw=driver?.skills?.[key]??driver?.baseTalent??65;
+  const curve=driver?.careerCurve?.[driver?.curveIndex]??driver?.careerMultiplier??.9;
+  const form=driver?.annualForm??1;
+  const confidence=((driver?.confidence??60)-60)*.07;
+  return Math.max(45,Math.min(100,Math.round(raw*curve*form+confidence)));
+}
+export function currentDriverRating(driver){
+  const keys=Object.keys(driver?.skills||{});
+  if(!keys.length)return Math.round((driver?.baseTalent||65)*(driver?.careerMultiplier||.9));
+  return Math.round(keys.reduce((sum,key)=>sum+effectiveDriverSkill(driver,key),0)/keys.length);
+}
+export function driverHierarchyScore(driver,year=2026){
+  const tenure=Math.max(0,year-(driver?.teamJoinedYear??year));
+  const experienceYears=Math.max(0,(driver?.age||18)-(driver?.debutAge||18));
+  const career=driver?.career||{};
+  // Teams cannot see rarity or future potential. They choose hierarchy from current
+  // performance, institutional trust, experience and an established winning record.
+  const success=(career.titles||0)*12+(career.f1Wins||0)*.34+(career.f1Podiums||0)*.09+(career.seriesTitles||0)*3;
+  const recent=(driver?.season?.points||0)*.015+(driver?.season?.wins||0)*.8;
+  const leadershipPromise=driver?.promisedSeat===1&&year<=(driver?.seatPromiseThrough||0)?16:0;
+  return currentDriverRating(driver)+Math.min(tenure,8)*.9+Math.min(experienceYears,15)*.65+success+recent+leadershipPromise;
+}
+export function assignRosterHierarchy(drivers,teamId,year=2026){
+  const roster=drivers.filter((driver)=>driver.active!==false&&driver.teamId===teamId&&driver.role==='Race driver');
+  roster.sort((a,b)=>driverHierarchyScore(b,year)-driverHierarchyScore(a,year)||currentDriverRating(b)-currentDriverRating(a));
+  roster.forEach((driver,index)=>{driver.seat=index+1;});
+  return roster;
+}
+function syncRaceEngineersForTeam(staff,drivers,team,year=2026){
+  const roster=assignRosterHierarchy(drivers,team.id,year);
+  const engineers=staff.filter((member)=>member.teamId===team.id&&member.role==='Race Engineer').sort((a,b)=>b.rating-a.rating);
+  roster.forEach((driver,index)=>{const engineer=engineers[index];driver.engineerId=engineer?.id||null;if(engineer){engineer.assignedDriverId=driver.id;engineer.assignedSeat=driver.seat;}});
+  engineers.slice(roster.length).forEach((engineer)=>{engineer.assignedDriverId=null;engineer.assignedSeat=null;});
+}
+
 function createStaff(rng, team, role, index = 0) {
   const country = rng.chance(0.58) ? team.country : rng.pick(COUNTRIES).name;
   const rarityRoll = rng.next();
-  const rarity = rarityRoll > 0.965 ? 'Legend' : rarityRoll > 0.78 ? 'Epic' : rarityRoll > 0.42 ? 'Rare' : 'Uncommon';
+  const rarity = rarityRoll > 0.992 ? 'Generational' : rarityRoll > 0.94 ? 'Legend' : rarityRoll > 0.76 ? 'Epic' : rarityRoll > 0.42 ? 'Rare' : rarityRoll > 0.14 ? 'Uncommon' : 'Common';
   const ratingBand = RARITY[rarity];
   const rating = rng.int(ratingBand.min, ratingBand.max);
   const commercial = Math.max(55, Math.min(99, rating + (role === 'Team Principal' ? rng.int(-1, 8) : rng.int(-10, 3))));
@@ -282,8 +320,31 @@ function createStaff(rng, team, role, index = 0) {
     id:`staff-${team.id}-${role.toLowerCase().replaceAll(' ','-')}-${index}`, name:generateName(rng,country), country, teamId:team.id,
     role, age:rng.int(role === 'Race Engineer' ? 29 : 36, role === 'Race Engineer' ? 55 : 67), rarity,
     rating, commercial, technical, sporting, strategy, specialty:rng.pick(STAFF_SPECIALTIES), personality:rng.pick(STAFF_PERSONALITIES),
-    ambition:rng.int(45,98), contractThrough:2026+rng.int(2,5), salary:Math.round((rating**2)/520), titles:0,wins:0,valueOverExpected:0, history:[],
+    ambition:rng.int(45,98), contractThrough:2026+rng.int(2,5), salary:Math.max(1,Math.round((rating**2)/520*({F1:1,F2:.34,F3:.22,F4:.13,FE:.42,WEC:.46}[team.series||'F1']||1))), titles:0,wins:0,valueOverExpected:0,
+    assignedDriverId:null,assignedSeat:null,teamJoinedYear:2026-rng.int(0,Math.min(5,Math.max(0,rng.int(0,8)))),history:[],
   };
+}
+
+function requiredStaffRoles(team){
+  const series=team.series||'F1';
+  const raceEngineerCount=series==='WEC'?3:2;
+  const leadership=series==='F1'
+    ?['Team Principal','Sporting Director','Technical Director','Head of Strategy']
+    :['Team Principal','Technical Director'];
+  return [...leadership,...Array(raceEngineerCount).fill('Race Engineer')];
+}
+function ensureTeamStaff(staff,drivers,team,rng,year=2026){
+  team.staffIds=team.staffIds||[];
+  const required=requiredStaffRoles(team);
+  const counts={};
+  required.forEach((role)=>{
+    const index=counts[role]||0;counts[role]=index+1;
+    const current=team.staffIds.map((id)=>staff.find((member)=>member.id===id)).filter(Boolean).filter((member)=>member.role===role)[index];
+    if(current)return;
+    const member=createStaff(rng,team,role,index);member.contractThrough=year+rng.int(2,5);member.teamJoinedYear=year-rng.int(0,Math.min(5,Math.max(0,year-2026+3)));
+    staff.push(member);team.staffIds.push(member.id);
+  });
+  syncRaceEngineersForTeam(staff,drivers,team,year);
 }
 
 function createTeam(rng, def, sponsorDeck) {
@@ -291,10 +352,10 @@ function createTeam(rng, def, sponsorDeck) {
   const brandAlias = { alpine:'renault', 'racing-bulls':'redbull' };
   const mainBrand = MAIN_BRANDS.find((brand)=>brand.id===(brandAlias[def.id]||def.id)) || MAIN_BRANDS.find((brand)=>brand.name===def.owner) || MAIN_BRANDS[0];
   const team = {
-    ...def, slotId:`slot-${def.id}`, mainBrandId:mainBrand.id, mainBrandName:mainBrand.name,
+    ...def, series:'F1', slotId:`slot-${def.id}`, mainBrandId:mainBrand.id, mainBrandName:mainBrand.name,
     commercialName:def.name, lineage:[{ year:2026, name:def.name, owner:def.owner, mainBrandId:mainBrand.id, engineId:def.engineId }],
     car:{ high:Math.max(65,def.baseline+carNoise()), low:Math.max(65,def.baseline+carNoise()), straight:Math.max(65,def.baseline+carNoise()), tyre:Math.max(65,def.baseline+carNoise()), mechanical:Math.max(65,def.baseline+carNoise()), energy:Math.max(65,def.baseline+carNoise()), reliability:Math.max(68,def.baseline+carNoise()), operations:Math.max(65,def.baseline+carNoise()) },
-    facilities:{ aero:Math.max(60,def.baseline+rng.int(-5,3)), simulator:Math.max(60,def.baseline+rng.int(-5,3)), manufacturing:Math.max(60,def.baseline+rng.int(-5,3)), pitCrew:Math.max(60,def.baseline+rng.int(-5,3)), academy:Math.max(55,def.baseline+rng.int(-12,2)) },
+    facilities:{ aero:Math.max(1,Math.min(10,Math.round((def.baseline-52)/4.8+rng.int(-1,1)))), simulator:Math.max(1,Math.min(10,Math.round((def.baseline-52)/4.8+rng.int(-1,1)))), manufacturing:Math.max(1,Math.min(10,Math.round((def.baseline-52)/4.8+rng.int(-1,1)))), pitCrew:Math.max(1,Math.min(10,Math.round((def.baseline-52)/4.8+rng.int(-1,1)))), academy:Math.max(1,Math.min(10,Math.round((def.baseline-58)/4.8+rng.int(-1,1)))) },
     finances:{
       cash:Math.round(mainBrand.funding*.55+def.budget*rng.int(1,3)),
       annualBudget:mainBrand.funding,
@@ -328,13 +389,25 @@ function createTeam(rng, def, sponsorDeck) {
 function rngSafe(index,min,max){return min+((index*17+13)%(max-min+1));}
 function makeSeriesTeams(series) {
   const names = series === 'F2' ? F2_TEAMS : series === 'F3' ? F3_TEAMS : series === 'F4' ? F4_TEAMS : series === 'FE' ? FE_TEAMS : WEC_TEAMS;
-  return names.map((name,index)=>({
+  const teams=names.map((name,index)=>({
     id:`${series.toLowerCase()}-team-${index}`, series, name, short:name.split(' ').map((word)=>word[0]).join('').slice(0,3).toUpperCase(),
     country:index%4===0?'United Kingdom':index%4===1?'Italy':index%4===2?'Germany':'Spain', rating: series==='F4'?62+((index*3)%10):series==='F3'?72+((index*3)%9):series==='F2'?78+((index*5)%10):80+((index*4)%11),
     driverIds:[], points:0,wins:0, color:`hsl(${(index*47 + (series.charCodeAt(1)||0)*9)%360} 72% 52%)`,
     carProfile:{high:64+((index*7)%24),low:64+((index*11)%24),straight:64+((index*5)%24),tyre:64+((index*13)%24),reliability:68+((index*9)%22)},
-    finances:{cash:series==='F4'?rngSafe(index,18,48):series==='F3'?rngSafe(index,32,70):series==='F2'?rngSafe(index,55,110):rngSafe(index,70,145),income:0,expenses:0,projectedBalance:0},
+    baseline:series==='F4'?62+((index*3)%10):series==='F3'?72+((index*3)%9):series==='F2'?78+((index*5)%10):80+((index*4)%11),
+    facilities:{aero:rngSafe(index,3,7),simulator:rngSafe(index+1,3,8),manufacturing:rngSafe(index+2,3,8),pitCrew:rngSafe(index+3,3,8),academy:rngSafe(index+4,3,9)},
+    finances:{cash:series==='F4'?rngSafe(index,18,48):series==='F3'?rngSafe(index,32,70):series==='F2'?rngSafe(index,55,110):rngSafe(index,70,145),income:series==='F4'?rngSafe(index,10,24):series==='F3'?rngSafe(index,18,38):series==='F2'?rngSafe(index,32,65):rngSafe(index,45,90),expenses:series==='F4'?rngSafe(index+2,9,23):series==='F3'?rngSafe(index+2,17,37):series==='F2'?rngSafe(index+2,30,64):rngSafe(index+2,44,88),projectedBalance:0,totalIncome:0,totalExpenses:0},
+    season:{points:0,wins:0,poles:0,podiums:0},career:{seasons:[]},staffIds:[],sponsorIds:[],lineage:[{year:2026,name,owner:name}],
   }));
+  teams.forEach((team)=>{
+    team.finances.totalIncome=team.finances.income;
+    team.finances.totalExpenses=team.finances.expenses;
+    team.finances.projectedBalance=team.finances.income-team.finances.expenses;
+    team.finances.mainFunding=team.finances.income;
+    team.finances.staffCost=0;
+    team.finances.facilityInvestment=0;
+  });
+  return teams;
 }
 
 function distributionFor(series, count) {
@@ -350,11 +423,11 @@ function distributionFor(series, count) {
 }
 
 function seriesAge(rng, series, rarity) {
-  if (series==='F4') return rarity==='Generational' ? rng.int(15,16) : rng.int(15,18);
-  if (series==='F3') return rarity==='Legend' ? rng.int(16,18) : rng.int(16,20);
-  if (series==='F2') return rarity==='Generational' ? 18 : rng.int(18,23);
-  if (series==='F1') return rarity==='Generational' ? rng.int(21,25) : rng.int(20,34);
-  return rng.int(23,37);
+  if (series==='F4') return rng.int(15,19);
+  if (series==='F3') return rng.int(16,22);
+  if (series==='F2') return rng.int(17,25);
+  if (series==='F1') { const roll=rng.next(); return roll>.90?rng.int(36,40):roll>.64?rng.int(29,35):rng.int(18,28); }
+  return rng.int(20,40);
 }
 
 function generateDriversForSeries(rng, series, teams, count, countryBias = []) {
@@ -364,7 +437,20 @@ function generateDriversForSeries(rng, series, teams, count, countryBias = []) {
     const team = teams[Math.floor(i / (count / teams.length)) % teams.length] || teams[i % teams.length];
     const rarity = rarityList[i] || 'Common';
     const country = countryBias[i] || rng.pick(COUNTRIES).name;
-    const driver = createDriver({ rng, id:`${series.toLowerCase()}-driver-${i}`, series, teamId:team.id, seat:i%2+1, rarity, age:seriesAge(rng,series,rarity), country, rookie:series==='F1' && i>18, academy:null });
+    const driver = createDriver({ rng, id:`${series.toLowerCase()}-driver-${i}`, series, teamId:team.id, seat:i%2+1, rarity, age:seriesAge(rng,series,rarity), country, rookie:false, academy:null });
+    const years=Math.max(0,driver.age-driver.debutAge);
+    if(series==='F1'){
+      driver.rookie=years<=1;
+      driver.career.f1Starts=Math.max(0,years*rng.int(12,22));
+      const eliteFactor=rarity==='Generational'?.42:rarity==='Legend'?.28:rarity==='Epic'?.13:rarity==='Rare'?.055:.015;
+      driver.career.f1Wins=Math.max(0,Math.round(years*eliteFactor*rng.next()*2.2));
+      driver.career.f1Podiums=Math.max(driver.career.f1Wins,Math.round(driver.career.f1Wins*2.1+years*eliteFactor*2));
+      driver.career.f1Poles=Math.max(0,Math.round(driver.career.f1Wins*(.5+rng.next())));
+      driver.career.f1Points=Math.round(driver.career.f1Starts*(1.5+eliteFactor*18));
+      const titleChance=Math.max(0,years-4)*eliteFactor*.12;
+      driver.career.titles=rng.chance(titleChance)?(rng.chance(.2)?2:1):0;
+      driver.teamJoinedYear=2026-Math.min(years,rng.int(0,Math.min(7,years)));
+    }
     drivers.push(driver); team.driverIds.push(driver.id);
   }
   return drivers;
@@ -407,7 +493,7 @@ const VIRTUAL_CIRCUITS={
 function circuitById(id){return CIRCUIT_POOL.find((c)=>c.id===id)||VIRTUAL_CIRCUITS[id]||CIRCUIT_POOL[0];}
 function buildCompetitionCalendars(seed,calendar){
   const result={F1:calendar};
-  Object.entries(SERIES_CALENDAR_IDS).forEach(([series,ids])=>{result[series]=ids.map((id,index)=>{const c=circuitById(id);return{...c,id:`${series.toLowerCase()}-${id}`,circuitId:c.id,series,round:index+1,status:'Upcoming',sessions:[],weekendSeed:seed+series.charCodeAt(1)*10007+index*1301};});});
+  Object.entries(SERIES_CALENDAR_IDS).forEach(([series,ids])=>{result[series]=ids.map((id,index)=>{const c=circuitById(id);return{...c,id:`${series.toLowerCase()}-${id}`,circuitId:c.id,series,round:index+1,week:Math.min(50,2+index*Math.max(2,Math.floor(46/Math.max(1,ids.length-1)))+(series==='FE'?1:0)),status:'Upcoming',sessions:[],weekendSeed:seed+series.charCodeAt(1)*10007+index*1301};});});
   return result;
 }
 
@@ -425,12 +511,10 @@ export function createUniverse(seed = 20260731) {
 
   const f1CountryBias = ['Hungary','Spain','France','United Kingdom','Japan','Italy','United States','Germany','Belgium','Mexico','Sweden','Brazil','France','Lebanon','United Kingdom','Argentina','United States','Serbia','Italy','India','Colombia','Australia'];
   const f1Drivers = generateDriversForSeries(rng,'F1',teams,22,f1CountryBias);
-  f1Drivers.forEach((driver,index)=>{
-    driver.seat=(index%2)+1;
-    const engineers=staff.filter((member)=>member.teamId===driver.teamId && member.role==='Race Engineer');
-    driver.engineerId=engineers[index%2]?.id || null;
+  teams.forEach((team)=>{
+    team.driverIds=[...new Set(team.driverIds)].slice(0,2);
+    syncRaceEngineersForTeam(staff,f1Drivers,team,2026);
   });
-  teams.forEach((team)=>{ team.driverIds=[...new Set(team.driverIds)].slice(0,2); });
 
   const f2Teams=makeSeriesTeams('F2');
   const f3Teams=makeSeriesTeams('F3');
@@ -443,6 +527,7 @@ export function createUniverse(seed = 20260731) {
   const feDrivers=generateDriversForSeries(rng,'FE',feTeams,22);
   const wecDrivers=generateDriversForSeries(rng,'WEC',wecTeams,24);
   const drivers=[...f1Drivers,...f2Drivers,...f3Drivers,...f4Drivers,...feDrivers,...wecDrivers];
+  [f2Teams,f3Teams,f4Teams,feTeams,wecTeams].flat().forEach((team)=>ensureTeamStaff(staff,drivers,team,rng,2026));
 
   // Academy links can begin as early as F4, making elite prospects visible for several seasons.
   const feederProspects=[...f2Drivers,...f3Drivers,...f4Drivers].sort((a,b)=>b.observedRating-a.observedRating);
@@ -488,14 +573,14 @@ export function createUniverse(seed = 20260731) {
     team.finances.totalIncome=team.finances.sponsorIncome;
     team.finances.totalExpenses=team.finances.driverCost+team.finances.staffCost+team.finances.engineCost+team.finances.developmentCost+team.finances.operatingCost;
     team.finances.projectedBalance=team.finances.totalIncome-team.finances.totalExpenses;
-    team.testContribution=Math.round(testDrivers.reduce((sum,driver)=>sum+driver.skills.feedback*.55+driver.skills.consistency*.25+driver.experience*.2,0)/testDrivers.length);
+    team.testContribution=Math.round(testDrivers.reduce((sum,driver)=>sum+effectiveDriverSkill(driver,'feedback')*.55+effectiveDriverSkill(driver,'consistency')*.25+driver.experience*.2,0)/testDrivers.length);
   });
 
-  const calendar = CIRCUIT_POOL.filter((c)=>!c.reserve).map((c,index)=>({ ...c, circuitId:c.id, series:'F1', round:index+1, status:'Upcoming', sessions:[], weekendSeed:seed + index*1009 }));
+  const calendar = CIRCUIT_POOL.filter((c)=>!c.reserve).map((c,index)=>({ ...c, circuitId:c.id, series:'F1', round:index+1, week:Math.min(50,2+index*2), status:'Upcoming', sessions:[], weekendSeed:seed + index*1009 }));
   const competitionCalendars=buildCompetitionCalendars(seed,calendar);
   const universe = {
     schemaVersion:SCHEMA_VERSION, seed, createdAt:new Date().toISOString(), name:`Chronicle ${String(seed).slice(-4)}`,
-    year:2026, seasonIndex:1, series:'F1', currentRound:0, currentSession:0, phase:'Pre-season',
+    year:2026, seasonIndex:1, series:'F1', currentWeek:1, currentRound:0, currentSession:0, phase:'Pre-season',
     teams, staff, engines:ENGINES, mainBrands:MAIN_BRANDS, sponsors:SPONSOR_BRANDS,
     drivers, feederTeams:{F2:f2Teams,F3:f3Teams,F4:f4Teams,FE:feTeams,WEC:wecTeams},
     calendar, competitionCalendars, circuitPool:[...CIRCUIT_POOL,...Object.values(VIRTUAL_CIRCUITS)], sessionResults:[], raceResults:[],
@@ -558,10 +643,19 @@ export function hydrateUniverse(input){
       trackSpecialty:driver.trackSpecialty||({'Wet-weather artist':'Wet weather','Tyre whisperer':'Tyre-limited circuits','Late braker':'Street circuits','Precision driver':'Technical circuits','Qualifying specialist':'High-speed circuits'}[driver.style]||'Balanced'),
       salaryDemand:demand,
       happiness:driver.happiness||{overall:64,role:64,results:62,salary:62,ambition:75,reasons:[]},
-      transferHistory:driver.transferHistory||[],
+      transferHistory:driver.transferHistory||[],promisedSeat:driver.promisedSeat||null,seatPromiseThrough:driver.seatPromiseThrough||null,
     };
   });
-  Object.values(universe.feederTeams||{}).flat().forEach((team)=>{team.carProfile=team.carProfile||{high:team.rating||72,low:team.rating||72,straight:team.rating||72,tyre:team.rating||72,reliability:team.rating||72};team.finances=team.finances||{cash:60,income:0,expenses:0,projectedBalance:0};});
+  universe.teams=(universe.teams||[]).map((team)=>{
+    const facilities=Object.fromEntries(Object.entries(team.facilities||{}).map(([key,value])=>[key,value>10?Math.max(1,Math.min(10,Number((value/10).toFixed(1)))):value]));
+    return {...team,facilities,staffIds:team.staffIds||[],testDriverIds:team.testDriverIds||[],finances:team.finances||{cash:100,totalIncome:0,totalExpenses:0,projectedBalance:0}};
+  });
+  universe.staff=(universe.staff||[]).map((member)=>({...member,rarity:member.rarity||'Common',assignedDriverId:member.assignedDriverId||null,assignedSeat:member.assignedSeat||null,teamJoinedYear:member.teamJoinedYear||universe.year||2026,history:member.history||[]}));
+  Object.values(universe.feederTeams||{}).flat().forEach((team)=>{team.carProfile=team.carProfile||{high:team.rating||72,low:team.rating||72,straight:team.rating||72,tyre:team.rating||72,reliability:team.rating||72};team.baseline=team.baseline||team.rating||72;team.facilities=team.facilities||{aero:5,simulator:5,manufacturing:5,pitCrew:5,academy:5};team.finances=team.finances||{cash:60,income:0,expenses:0,projectedBalance:0,totalIncome:0,totalExpenses:0};team.season=team.season||{points:team.points||0,wins:team.wins||0,poles:0,podiums:0};team.staffIds=team.staffIds||[];team.lineage=team.lineage||[{year:universe.year||2026,name:team.name,owner:team.name}];});
+  universe.currentWeek=universe.currentWeek||1;
+  universe.drivers.forEach((driver)=>{driver.teamJoinedYear=driver.teamJoinedYear??(universe.year||2026);driver.yearsInSeries=driver.yearsInSeries??Math.max(0,(driver.age||18)-(driver.debutAge||18));});
+  const hydrateRng=makeRng((universe.seed||20260731)+(universe.year||2026)*97);
+  [...universe.teams,...Object.values(universe.feederTeams||{}).flat()].forEach((team)=>ensureTeamStaff(universe.staff,universe.drivers,team,hydrateRng,universe.year||2026));
   return universe;
 }
 export function getTeam(universe,id) { return universe.teams.find((team)=>team.id===id) || Object.values(universe.feederTeams||{}).flat().find((team)=>team.id===id); }

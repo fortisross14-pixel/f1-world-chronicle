@@ -18,10 +18,12 @@ npm run build
 npm run preview
 ```
 
-Simulation-only integrity test, which does not require React or Vite packages:
+Simulation-only integrity tests, which do not require React or Vite packages:
 
 ```bash
 npm run smoke
+npm run deterministic
+npm run universe-v4
 ```
 
 ## GitHub Pages deployment
@@ -33,7 +35,7 @@ This repository is ready for GitHub Pages through GitHub Actions.
 3. Under **Build and deployment**, choose **GitHub Actions** as the source.
 4. Open the **Actions** tab and allow the `Deploy F1 World Chronicle` workflow to finish.
 
-Do not publish the source folder directly. Vite must build the site first and GitHub Pages must publish the generated `dist` folder. The included `vite.config.js` uses relative production asset paths, which prevents the `/assets/...` CSS and JavaScript 404 errors that occur when a Vite project is hosted below a repository path.
+Do not publish the source folder directly. Vite must build the site first and GitHub Pages must publish the generated `dist` folder. The included `vite.config.js` detects the GitHub repository name and builds assets under `/<repository-name>/`. The workflow invokes Vite through Node directly, avoiding Linux executable-permission failures from `node_modules/.bin/vite`.
 
 The browser-console message about an asynchronous listener or a closed message channel is commonly produced by a browser extension. It is separate from the application unless it remains in a clean incognito profile with extensions disabled.
 
@@ -49,7 +51,7 @@ The application opens on a dedicated universe screen rather than entering a pre-
 - Portable JSON export and import
 - Schema checks that prevent an older prototype save from crashing a newer build
 
-Schema v5 changes the world model substantially, so saves made by an older build should not be loaded into this version.
+Schema v8 changes the world model substantially. The hydration layer upgrades recent universe saves, adds missing staff/facility fields and rebuilds driver hierarchy, but very early prototype saves should be exported before switching builds.
 
 ## Complete driver world
 
@@ -115,16 +117,14 @@ Weather is a core competitive axis rather than a cosmetic random event. A wet-we
 
 Each F1 organization contains:
 
-- Two race drivers
+- Two race drivers with explicit Driver 1 / Driver 2 hierarchy
 - Two procedural test drivers and emergency reserves
-- Team principal
-- Sporting director
-- Technical director
-- Strategy head
-- One race engineer per race driver
-- Engine supplier
-- Eight-dimensional car model
-- Facilities, development capacity and financial structure
+- Team principal, sporting director, technical director and strategy head
+- One named race engineer assigned to each race driver
+- Engine supplier, eight-dimensional car model and full finances
+- Facilities rated 1–10 that decay and receive automatic investment
+
+F2, F3, F4, Formula E and WEC teams are also permanent organizations. They have their own facilities, finances, staff rarity, leadership, race engineers and team pages. WEC assigns a race engineer to each of its three seats.
 
 Test-driver feedback contributes to practice setup and long-term car development. Test drivers can replace an injured race driver, and strong reserve performances can create market narratives or a future race seat.
 
@@ -200,19 +200,23 @@ src/storage.js    IndexedDB universe slots and JSON import/export
 src/main.jsx      launcher, navigation, competition pages, databases and profiles
 src/styles.css    responsive F1-inspired visual system and procedural liveries
 scripts/smoke.mjs deterministic multi-season integrity test
-vite.config.js    relative production paths for GitHub Pages
-.github/workflows/deploy-pages.yml automated build and Pages deployment
+scripts/deterministic.mjs race-variety, events, transfers and flags validation
+scripts/universe-v4.mjs hierarchy, facilities, staff, pages and global-time validation
+vite.config.js    localhost and GitHub repository-base configuration
+.github/workflows/deploy.yml automated tests, build and Pages deployment
 ```
 
 See `IMPLEMENTATION.md` for the detailed design-coverage map and current prototype boundaries.
 
-## Universe v3 additions
+## Universe v4 additions
 
-- Schedule and Results now cover F1, F2, F3, F4, Formula E, and WEC. Every completed event opens a shared circuit chronicle with Overview, Current Year, History, and Stats tabs.
-- Event records preserve Friday practice, Q1, Q2, Q3, Sprint sessions where applicable, race classifications, temperatures, weather, pole, podium, fastest lap, and points.
-- Circuit performance DNA weights car architecture, reliability, driver specialty, rain probability, and extreme heat/cold differently at every venue.
-- First driver, second driver, and test/reserve status are displayed with team-colored 1/2/3 badges.
-- The off-season market uses happiness, role ambition, salary demands, results, current observed value, team affordability, and sponsor fit. Every move is stored in the Paddock ledger with origin, destination, series, seat, and salary.
-- Country flags are bundled locally in `public/flags`, so they do not depend on emoji or a third-party flag service.
-- GitHub Pages is deployed through `.github/workflows/deploy.yml`; see `DEPLOY_GITHUB.md` for the required repository and Pages settings.
-
+- Driver 1 and Driver 2 are reassigned from current ability, team tenure, total experience, prior championships, wins, podiums and recent results. Rarity and future potential are not used by the AI.
+- A proven veteran can lead a still-developing Legend; the prospect can later earn Driver 1 status after becoming the stronger established performer.
+- Facilities use a visible 1–10 scale across all 62 active teams. They decay every off-season, consume investment and influence development, setup, pit work, reliability and future car quality.
+- Every active team has rarity-colored leadership and one named race engineer per race seat. Staff can transfer within F1, F2, F3, F4, Formula E and WEC.
+- Initial universes contain teenagers, prime-age competitors and veterans already in the final season of their generated career.
+- The Teams screen covers all championships with compact cards, competition filters and sorting by points, revenue or car quality.
+- Driver, team, staff and event records are full browser-history pages instead of stacked modals. Back returns to the exact previous page, including non-F1 organizations.
+- The shared calendar advances the whole universe by one week, four weeks or the rest of the year. Every competition scheduled in that time window is simulated.
+- Visible and simulated driver skills now use the current career multiplier and annual form. Raw 99–100 ceiling skills no longer display or perform as 100 while the driver is at a 0.81 development year.
+- Flags are bundled locally for every generated driver, staff member, team country and circuit.
