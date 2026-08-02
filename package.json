@@ -1,7 +1,7 @@
 {
   "name": "f1-world-chronicle",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,9 @@
     "deterministic": "node scripts/deterministic.mjs",
     "universe-v4": "node scripts/universe-v4.mjs",
     "universe-v5": "node scripts/universe-v5.mjs",
-    "cash-analysis": "node scripts/cash-analysis.mjs"
+    "cash-analysis": "node scripts/cash-analysis.mjs",
+    "universe-v6": "node scripts/universe-v6.mjs",
+    "balance-12": "node scripts/balance-12.mjs"
   },
   "dependencies": {
     "react": "^19.1.1",

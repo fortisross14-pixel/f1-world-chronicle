@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { createUniverse } from '../src/data.js';
+import { advanceToNextSeason, simulateToSeasonEnd } from '../src/sim.js';
+let universe=createUniverse(20260731);universe=simulateToSeasonEnd(universe);universe=advanceToNextSeason(universe);
+const report=universe.preseasonReports[0];
+assert.ok(Array.isArray(report.sponsorChanges)&&report.sponsorChanges.length>0,'Sponsor renewals/replacements must be tabular');
+assert.ok(Array.isArray(report.staffChanges),'Staff market must be tabular');
+const market=universe.marketHistory.filter((move)=>move.year===universe.year);const counts=new Map();for(const move of market)counts.set(move.driverId,(counts.get(move.driverId)||0)+1);
+assert.ok([...counts.values()].every((count)=>count===1),'Each driver may have only one market action per season');
+assert.ok(market.some((move)=>move.from.teamId===move.to.teamId),'At least one team should retain a driver with a renewed deal');
+console.log('Universe v6 validation passed:',{driverActions:market.length,renewals:market.filter((move)=>move.from.teamId===move.to.teamId).length,sponsorRows:report.sponsorChanges.length,staffRows:report.staffChanges.length});

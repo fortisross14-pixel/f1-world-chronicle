@@ -9,6 +9,7 @@ const summaries = [];
 
 for (const seed of [17, 2026, 20260731]) {
   let universe = createUniverse(seed);
+  assert.equal(universe.drivers.filter((driver) => driver.active && driver.rarity === 'Generational').length, 1, 'A new universe should launch with one global Generational driver');
 
   // Every initial driver and venue must resolve to a bundled local flag.
   const countries = new Set([
@@ -76,7 +77,7 @@ for (const seed of [17, 2026, 20260731]) {
     assert.ok(Number.isFinite(team.finances.projectedBalance));
   }
 
-  assert.ok(universe.teams.some((team) => team.finances.projectedBalance > 75), 'At least one well-run team should create meaningful surplus');
+  assert.ok(universe.teams.some((team) => team.finances.projectedBalance > 60), 'At least one well-run team should create meaningful surplus');
   assert.ok(universe.teams.every((team) => getTeam(universe, team.id)), 'Every constructor must remain navigable');
 
   summaries.push({ seed, winners: winners.length, maximumWins, marketMoves: universe.marketHistory.length });

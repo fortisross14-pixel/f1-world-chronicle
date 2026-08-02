@@ -26,6 +26,7 @@ npm run deterministic
 npm run universe-v4
 npm run universe-v5
 npm run cash-analysis
+npm run balance-12
 ```
 
 ## GitHub Pages deployment
@@ -53,7 +54,7 @@ The application opens on a dedicated universe screen rather than entering a pre-
 - Portable JSON export and import
 - Schema checks that prevent an older prototype save from crashing a newer build
 
-Schema v9 expands competition, driver, team-history, preseason-report and facility-economy data. The hydration layer upgrades recent universe saves, adds missing staff/facility fields and rebuilds driver hierarchy, but very early prototype saves should be exported before switching builds.
+Schema v10 adds the global Generational-talent lifecycle, stronger driver archetypes, circuit conversion and long-run championship balancing. The hydration layer upgrades recent universe saves, adds missing staff/facility fields and rebuilds driver hierarchy, but very early prototype saves should be exported before switching builds.
 
 ## Complete driver world
 
@@ -77,16 +78,14 @@ Rarity and fixed base talent are visible to the player because this is a univers
 
 A team can therefore overpay for a driver performing at a 1.01 career multiplier immediately before that driver's curve falls to 0.92, or sign an overlooked young Legend before the rest of the paddock understands how good they are.
 
-The initial F1 distribution is:
+Generational talent is controlled across the **entire universe**, not allocated separately to each grid. A new universe normally starts with exactly one Generational driver, who may already be in F1 or may begin in F2, F3 or F4. Across later seasons:
 
-- 2 Generational
-- 4 Legend
-- 6 Epic
-- 6 Rare
-- 3 Uncommon
-- 1 Common
+- The active universe can contain 0, 1 or 2 Generational drivers.
+- One is the normal state.
+- A second overlapping career is deliberately rare.
+- After the last one retires, the universe can spend time with none before another appears.
 
-The lower categories use deeper, lower-skew distributions while still allowing an occasional Legend or Generational prospect to appear very young.
+Legend, Epic, Rare, Uncommon and Common distributions remain deeper in every category. Old schema saves with excessive Generational counts are normalized to a maximum of two while preserving the two strongest established careers.
 
 ## Competitions
 
@@ -126,6 +125,8 @@ The initial and off-season F1 markets enforce a minimum race-driver age of 21. A
 - Formula-style Grand Prix and Sprint points
 
 Weather is a core competitive axis rather than a cosmetic random event. A wet-weather specialist can qualify unusually high in rain, then lose that advantage in a dry race. A driver who qualifies poorly on Saturday can become exceptional when rain reaches the circuit on Sunday. Wet skill, composure, strategist quality, pit-wall timing and tyre crossover all affect the result independently.
+
+Driver archetypes now create separate Saturday and Sunday profiles. A Qualifying specialist can collect poles through exceptional one-lap pace while losing ground through weaker race pace, tyre use or racecraft. Overtaking and Defensive specialists interact with each circuit's passing difficulty; grid position matters far more at Monaco than at a high-overtaking venue. Cars also launch with stronger concept-specific strengths and weaknesses instead of being uniformly good or bad in every dimension.
 
 ## Constructors, staff and test drivers
 
@@ -212,6 +213,18 @@ Effective performance = fixed base talent
 
 Rarity never changes. Results do not simply follow rarity either: machinery, strategy, development, reliability, weather and career timing determine whether talent becomes a legendary career or a famous disappointment.
 
+## Long-run competitive balance
+
+The included `balance-12` test runs the real race, development, market and career systems across twelve seasons. The final tuning targets a 1990s/early-2000s style range rather than a permanent single-driver sweep:
+
+- Roughly two to four seasons per twelve with a top winner on 6–7 victories.
+- Most seasons with the leading driver on 8–10 victories.
+- One to three exceptional seasons above 10 victories.
+- Usually five to eight race winners and four to seven winning constructors in a season.
+- The leading champion of a twelve-year era normally finishes with three to five titles rather than winning almost every year.
+
+Three fixed twelve-season runs (36 seasons total) produced 8 seasons at 6–7 wins, 20 seasons at 8–10 wins, 7 seasons above 10 wins and one unusually open five-win season. The most successful driver in each twelve-year run won three or four championships. These are deterministic guardrails, not hard caps: an extraordinary driver-car combination can still produce a historic season.
+
 ## Project structure
 
 ```text
@@ -255,3 +268,13 @@ See `IMPLEMENTATION.md` for the detailed design-coverage map and current prototy
 - Pre-season reports compare spending for all 62 teams and list branding changes, generated drivers and retirements with a competition filter.
 - F4 organizations use recognizable brand-style identities instead of generic country-team labels.
 - Facility investment has a nonlinear elite cost curve and faster high-end decay. A three-season deterministic cash-analysis script verifies that surpluses are reinvested without making level 10 routine.
+
+
+## Universe v6
+
+- Paddock now has tabular Driver Market, Staff Market and Business views.
+- Sponsor renewals and replacements show previous/new partner and income.
+- Driver retention uses happiness plus role, salary and projected title opportunity.
+- A driver can have only one market action each off-season.
+- Competition, circuit and Almanac records use compact top-five categories.
+- Added stronger season-dominance pressure while preserving elite-driver dynasties.

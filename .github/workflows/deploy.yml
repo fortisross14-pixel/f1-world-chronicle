@@ -47,6 +47,9 @@ jobs:
       - name: Run universe v5 systems test
         run: npm run universe-v5
 
+      - name: Run universe v6 market test
+        run: npm run universe-v6
+
       # package.json invokes Vite through Node directly, so the build does not
       # depend on the executable bit of node_modules/.bin/vite.
       - name: Build GitHub Pages bundle
