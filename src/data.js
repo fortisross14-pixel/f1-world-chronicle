@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 12;
 
 export const RARITY = {
   Generational: { min: 95, max: 99, color: '#e10600', legacy: 1.28 },
@@ -144,30 +144,30 @@ export const F1_TEAM_DEFS = [
 ];
 
 export const CIRCUIT_POOL = [
-  { id:'melbourne', country:'Australia', city:'Melbourne', name:'Albert Park', class:'Commercial anchor', protected:55, contract:2031, traits:{high:76,low:70,straight:75,street:45,overtake:62,tyre:56}, rain:18, temp:23, sprint:false },
-  { id:'shanghai', country:'China', city:'Shanghai', name:'Shanghai International', class:'Commercial anchor', protected:62, contract:2030, traits:{high:70,low:68,straight:83,street:10,overtake:73,tyre:66}, rain:21, temp:24, sprint:true },
-  { id:'suzuka', country:'Japan', city:'Suzuka', name:'Suzuka Circuit', class:'Heritage regular', protected:92, contract:2032, traits:{high:96,low:63,straight:66,street:0,overtake:55,tyre:72}, rain:36, temp:21, sprint:false },
-  { id:'sakhir', country:'Bahrain', city:'Sakhir', name:'Bahrain International', class:'Commercial anchor', protected:68, contract:2034, traits:{high:62,low:79,straight:87,street:0,overtake:82,tyre:88}, rain:4, temp:29, sprint:false },
-  { id:'jeddah', country:'Saudi Arabia', city:'Jeddah', name:'Jeddah Corniche', class:'Street project', protected:44, contract:2030, traits:{high:92,low:50,straight:92,street:100,overtake:70,tyre:50}, rain:5, temp:30, sprint:false },
-  { id:'miami', country:'United States', city:'Miami', name:'Miami International', class:'Street project', protected:47, contract:2031, traits:{high:68,low:75,straight:78,street:88,overtake:67,tyre:69}, rain:25, temp:31, sprint:true },
-  { id:'monaco', country:'Monaco', city:'Monte Carlo', name:'Circuit de Monaco', class:'Protected classic', protected:100, contract:2035, traits:{high:42,low:100,straight:35,street:100,overtake:12,tyre:42}, rain:24, temp:22, sprint:false },
-  { id:'barcelona', country:'Spain', city:'Barcelona', name:'Circuit de Barcelona-Catalunya', class:'Heritage regular', protected:70, contract:2028, traits:{high:88,low:70,straight:68,street:0,overtake:57,tyre:84}, rain:17, temp:26, sprint:false },
-  { id:'montreal', country:'Canada', city:'Montréal', name:'Circuit Gilles Villeneuve', class:'Heritage regular', protected:84, contract:2031, traits:{high:55,low:72,straight:93,street:60,overtake:78,tyre:58}, rain:29, temp:23, sprint:false },
-  { id:'spielberg', country:'Austria', city:'Spielberg', name:'Red Bull Ring', class:'Heritage regular', protected:78, contract:2030, traits:{high:72,low:64,straight:91,street:0,overtake:82,tyre:60}, rain:23, temp:24, sprint:false },
-  { id:'silverstone', country:'United Kingdom', city:'Silverstone', name:'Silverstone Circuit', class:'Protected classic', protected:100, contract:2035, traits:{high:100,low:54,straight:78,street:0,overtake:72,tyre:79}, rain:38, temp:19, sprint:false },
-  { id:'spa', country:'Belgium', city:'Spa-Francorchamps', name:'Circuit de Spa-Francorchamps', class:'Heritage regular', protected:95, contract:2030, traits:{high:98,low:55,straight:93,street:0,overtake:79,tyre:74}, rain:52, temp:17, sprint:true },
-  { id:'budapest', country:'Hungary', city:'Budapest', name:'Hungaroring', class:'Heritage regular', protected:80, contract:2032, traits:{high:66,low:91,straight:44,street:10,overtake:35,tyre:76}, rain:18, temp:31, sprint:false },
-  { id:'zandvoort', country:'Netherlands', city:'Zandvoort', name:'Circuit Zandvoort', class:'Heritage regular', protected:72, contract:2028, traits:{high:87,low:79,straight:42,street:0,overtake:31,tyre:67}, rain:32, temp:20, sprint:false },
-  { id:'monza', country:'Italy', city:'Monza', name:'Autodromo Nazionale Monza', class:'Protected classic', protected:100, contract:2035, traits:{high:68,low:44,straight:100,street:0,overtake:74,tyre:51}, rain:14, temp:27, sprint:false },
-  { id:'madrid', country:'Spain', city:'Madrid', name:'Madring', class:'Street project', protected:38, contract:2035, traits:{high:69,low:78,straight:74,street:78,overtake:61,tyre:62}, rain:19, temp:28, sprint:false },
-  { id:'baku', country:'Azerbaijan', city:'Baku', name:'Baku City Circuit', class:'Street project', protected:46, contract:2030, traits:{high:48,low:81,straight:100,street:100,overtake:71,tyre:57}, rain:11, temp:25, sprint:false },
-  { id:'singapore', country:'Singapore', city:'Singapore', name:'Marina Bay', class:'Commercial anchor', protected:69, contract:2032, traits:{high:48,low:94,straight:51,street:100,overtake:37,tyre:88}, rain:47, temp:31, sprint:false },
-  { id:'austin', country:'United States', city:'Austin', name:'Circuit of the Americas', class:'Commercial anchor', protected:71, contract:2031, traits:{high:90,low:72,straight:78,street:0,overtake:82,tyre:82}, rain:27, temp:27, sprint:true },
-  { id:'mexico-city', country:'Mexico', city:'Mexico City', name:'Autódromo Hermanos Rodríguez', class:'Commercial anchor', protected:70, contract:2030, traits:{high:65,low:77,straight:96,street:0,overtake:72,tyre:63}, rain:23, temp:22, sprint:false },
-  { id:'interlagos', country:'Brazil', city:'São Paulo', name:'Interlagos', class:'Heritage regular', protected:94, contract:2033, traits:{high:78,low:74,straight:80,street:0,overtake:87,tyre:76}, rain:45, temp:25, sprint:true },
-  { id:'las-vegas', country:'United States', city:'Las Vegas', name:'Las Vegas Strip', class:'Street project', protected:42, contract:2031, traits:{high:46,low:67,straight:100,street:100,overtake:75,tyre:48}, rain:6, temp:14, sprint:false },
-  { id:'lusail', country:'Qatar', city:'Lusail', name:'Lusail International', class:'Commercial anchor', protected:52, contract:2032, traits:{high:96,low:54,straight:80,street:0,overtake:59,tyre:94}, rain:4, temp:28, sprint:true },
-  { id:'yas-marina', country:'United Arab Emirates', city:'Abu Dhabi', name:'Yas Marina', class:'Commercial anchor', protected:73, contract:2035, traits:{high:61,low:78,straight:88,street:40,overtake:70,tyre:65}, rain:3, temp:27, sprint:false },
+  { id:'melbourne', country:'Australia', city:'Melbourne', name:'Albert Park', class:'Commercial anchor', protected:55, contract:6, traits:{high:76,low:70,straight:75,street:45,overtake:62,tyre:56}, rain:18, temp:23, sprint:false },
+  { id:'shanghai', country:'China', city:'Shanghai', name:'Shanghai International', class:'Commercial anchor', protected:62, contract:5, traits:{high:70,low:68,straight:83,street:10,overtake:73,tyre:66}, rain:21, temp:24, sprint:true },
+  { id:'suzuka', country:'Japan', city:'Suzuka', name:'Suzuka Circuit', class:'Heritage regular', protected:92, contract:7, traits:{high:96,low:63,straight:66,street:0,overtake:55,tyre:72}, rain:36, temp:21, sprint:false },
+  { id:'sakhir', country:'Bahrain', city:'Sakhir', name:'Bahrain International', class:'Commercial anchor', protected:68, contract:9, traits:{high:62,low:79,straight:87,street:0,overtake:82,tyre:88}, rain:4, temp:29, sprint:false },
+  { id:'jeddah', country:'Saudi Arabia', city:'Jeddah', name:'Jeddah Corniche', class:'Street project', protected:44, contract:5, traits:{high:92,low:50,straight:92,street:100,overtake:70,tyre:50}, rain:5, temp:30, sprint:false },
+  { id:'miami', country:'United States', city:'Miami', name:'Miami International', class:'Street project', protected:47, contract:6, traits:{high:68,low:75,straight:78,street:88,overtake:67,tyre:69}, rain:25, temp:31, sprint:true },
+  { id:'monaco', country:'Monaco', city:'Monte Carlo', name:'Circuit de Monaco', class:'Protected classic', protected:100, contract:10, traits:{high:42,low:100,straight:35,street:100,overtake:12,tyre:42}, rain:24, temp:22, sprint:false },
+  { id:'barcelona', country:'Spain', city:'Barcelona', name:'Circuit de Barcelona-Catalunya', class:'Heritage regular', protected:70, contract:3, traits:{high:88,low:70,straight:68,street:0,overtake:57,tyre:84}, rain:17, temp:26, sprint:false },
+  { id:'montreal', country:'Canada', city:'Montréal', name:'Circuit Gilles Villeneuve', class:'Heritage regular', protected:84, contract:6, traits:{high:55,low:72,straight:93,street:60,overtake:78,tyre:58}, rain:29, temp:23, sprint:false },
+  { id:'spielberg', country:'Austria', city:'Spielberg', name:'Red Bull Ring', class:'Heritage regular', protected:78, contract:5, traits:{high:72,low:64,straight:91,street:0,overtake:82,tyre:60}, rain:23, temp:24, sprint:false },
+  { id:'silverstone', country:'United Kingdom', city:'Silverstone', name:'Silverstone Circuit', class:'Protected classic', protected:100, contract:10, traits:{high:100,low:54,straight:78,street:0,overtake:72,tyre:79}, rain:38, temp:19, sprint:false },
+  { id:'spa', country:'Belgium', city:'Spa-Francorchamps', name:'Circuit de Spa-Francorchamps', class:'Heritage regular', protected:95, contract:5, traits:{high:98,low:55,straight:93,street:0,overtake:79,tyre:74}, rain:52, temp:17, sprint:true },
+  { id:'budapest', country:'Hungary', city:'Budapest', name:'Hungaroring', class:'Heritage regular', protected:80, contract:7, traits:{high:66,low:91,straight:44,street:10,overtake:35,tyre:76}, rain:18, temp:31, sprint:false },
+  { id:'zandvoort', country:'Netherlands', city:'Zandvoort', name:'Circuit Zandvoort', class:'Heritage regular', protected:72, contract:3, traits:{high:87,low:79,straight:42,street:0,overtake:31,tyre:67}, rain:32, temp:20, sprint:false },
+  { id:'monza', country:'Italy', city:'Monza', name:'Autodromo Nazionale Monza', class:'Protected classic', protected:100, contract:10, traits:{high:68,low:44,straight:100,street:0,overtake:74,tyre:51}, rain:14, temp:27, sprint:false },
+  { id:'madrid', country:'Spain', city:'Madrid', name:'Madring', class:'Street project', protected:38, contract:10, traits:{high:69,low:78,straight:74,street:78,overtake:61,tyre:62}, rain:19, temp:28, sprint:false },
+  { id:'baku', country:'Azerbaijan', city:'Baku', name:'Baku City Circuit', class:'Street project', protected:46, contract:5, traits:{high:48,low:81,straight:100,street:100,overtake:71,tyre:57}, rain:11, temp:25, sprint:false },
+  { id:'singapore', country:'Singapore', city:'Singapore', name:'Marina Bay', class:'Commercial anchor', protected:69, contract:7, traits:{high:48,low:94,straight:51,street:100,overtake:37,tyre:88}, rain:47, temp:31, sprint:false },
+  { id:'austin', country:'United States', city:'Austin', name:'Circuit of the Americas', class:'Commercial anchor', protected:71, contract:6, traits:{high:90,low:72,straight:78,street:0,overtake:82,tyre:82}, rain:27, temp:27, sprint:true },
+  { id:'mexico-city', country:'Mexico', city:'Mexico City', name:'Autódromo Hermanos Rodríguez', class:'Commercial anchor', protected:70, contract:5, traits:{high:65,low:77,straight:96,street:0,overtake:72,tyre:63}, rain:23, temp:22, sprint:false },
+  { id:'interlagos', country:'Brazil', city:'São Paulo', name:'Interlagos', class:'Heritage regular', protected:94, contract:8, traits:{high:78,low:74,straight:80,street:0,overtake:87,tyre:76}, rain:45, temp:25, sprint:true },
+  { id:'las-vegas', country:'United States', city:'Las Vegas', name:'Las Vegas Strip', class:'Street project', protected:42, contract:6, traits:{high:46,low:67,straight:100,street:100,overtake:75,tyre:48}, rain:6, temp:14, sprint:false },
+  { id:'lusail', country:'Qatar', city:'Lusail', name:'Lusail International', class:'Commercial anchor', protected:52, contract:7, traits:{high:96,low:54,straight:80,street:0,overtake:59,tyre:94}, rain:4, temp:28, sprint:true },
+  { id:'yas-marina', country:'United Arab Emirates', city:'Abu Dhabi', name:'Yas Marina', class:'Commercial anchor', protected:73, contract:10, traits:{high:61,low:78,straight:88,street:40,overtake:70,tyre:65}, rain:3, temp:27, sprint:false },
   { id:'buenos-aires', country:'Argentina', city:'Buenos Aires', name:'Autódromo Oscar Gálvez', class:'Rotating venue', protected:35, contract:0, traits:{high:63,low:73,straight:72,street:0,overtake:72,tyre:70}, rain:26, temp:25, sprint:false, reserve:true },
   { id:'sepang', country:'Malaysia', city:'Kuala Lumpur', name:'Sepang International', class:'Rotating venue', protected:68, contract:0, traits:{high:88,low:65,straight:89,street:0,overtake:83,tyre:88}, rain:58, temp:32, sprint:false, reserve:true },
   { id:'kyalami', country:'South Africa', city:'Midrand', name:'Kyalami', class:'Rotating venue', protected:61, contract:0, traits:{high:84,low:67,straight:76,street:0,overtake:69,tyre:71}, rain:31, temp:25, sprint:false, reserve:true },
@@ -186,6 +186,24 @@ const F4_TEAM_COUNTRIES = ['Italy','United Kingdom','Spain','France','Germany','
 
 const DRIVER_STYLES = ['Aggressive attacker','Precision driver','Tyre whisperer','Wet-weather artist','Late braker','Qualifying specialist','Overtaking specialist','Defensive specialist','Complete driver','Development leader'];
 export const TRACK_SPECIALTIES = ['High-speed circuits','Technical circuits','Power circuits','Street circuits','Tyre-limited circuits','Wet weather','Balanced'];
+export const PERSONALITY_TRAITS = {
+  communication:['Outspoken','Charismatic','Calm','Reserved','Shy'],
+  ethics:['Fair','Pragmatic','Ruthless','Dirty'],
+  temperament:['Hot-headed','Passionate','Composed','Cold'],
+  social:['Loyal','Friendly','Independent','Arrogant','Rivalrous'],
+};
+function createPersonality(rng){
+  return {
+    communication:rng.pick(PERSONALITY_TRAITS.communication),
+    ethics:rng.pick(PERSONALITY_TRAITS.ethics),
+    temperament:rng.pick(PERSONALITY_TRAITS.temperament),
+    social:rng.pick(PERSONALITY_TRAITS.social),
+  };
+}
+function initialMind(teamId,happiness=64){
+  const teamScore=Math.max(-35,Math.min(55,Math.round((happiness-60)*2.2)));
+  return {teamSentiments:teamId?{[teamId]:teamScore}:{},people:{},thoughts:[],press:[],official:{},lastThoughtKey:null};
+}
 const SERIES_SALARY_SCALE={F1:1,F2:.34,F3:.18,F4:.08,FE:.62,WEC:.68,FREE:.22};
 const STAFF_ROLES = ['Team Principal','Sporting Director','Technical Director','Head of Strategy','Race Engineer'];
 const STAFF_SPECIALTIES = ['politics','pit operations','aerodynamics','mechanical design','weather strategy','driver coaching','regulation changes','reliability','commercial growth','academy development'];
@@ -248,8 +266,12 @@ function createDriver({ rng, id, series, teamId, seat, rarity, age, country, roo
   };
   const trackSpecialty=specialtyByStyle[style]||rng.pick(TRACK_SPECIALTIES);
   const debutAge = series === 'F1' ? rng.int(18,Math.max(18,Math.min(age,24))) : series === 'F2' ? rng.int(17,Math.max(17,Math.min(age,20))) : series === 'F3' ? 16 : series === 'F4' ? 15 : rng.int(18,Math.max(18,Math.min(age,25)));
-  const remainingYears = (series==='F1'||series==='FE'||series==='WEC') ? rng.int(1,8) : rng.int(2,7);
-  const careerLength = Math.max(7,Math.min(24,(age-debutAge)+remainingYears));
+  // Careers are motorsport careers, not feeder-category careers. Even a short
+  // career reaches at least age 30; long careers can extend into the early 40s.
+  // This also lets an initial veteran legitimately spawn in his final season.
+  const longevityBonus = rarity === 'Generational' ? 3 : rarity === 'Legend' ? 2 : rarity === 'Epic' ? 1 : 0;
+  const targetRetirementAge = Math.min(42, age>=35&&rng.chance(.48)?age:Math.max(30, age + 1, 31 + rng.int(0,7) + longevityBonus));
+  const careerLength = Math.max(8,targetRetirementAge-debutAge+1);
   const peakAge = rng.int(25,31);
   const curve = createCareerCurve(rng, debutAge, careerLength, peakAge);
   const curveIndex = Math.max(0, Math.min(curve.length - 1, age - debutAge));
@@ -257,23 +279,26 @@ function createDriver({ rng, id, series, teamId, seat, rarity, age, country, roo
   const salaryScale=SERIES_SALARY_SCALE[series]||.25;
   const salaryBase=(baseTalent ** 2) / 300 + rng.int(0, 8);
   const demandBase=(baseTalent ** 2) / 285 + rng.int(0, 10);
-  return {
+  const driver = {
     id, name: generateName(rng, country), country, countryCode: countryByName(country).code, series, teamId, seat,
     number: rng.int(2, 98), age, debutAge, rarity, baseTalent, style, trackSpecialty, careerLength, peakAge, careerCurve: curve,
     curveIndex, careerMultiplier: curve[curveIndex] || 0.9, annualForm: Number((0.975 + rng.next() * 0.05).toFixed(3)),
     experience: Math.max(15, Math.min(99, 35 + (age - 18) * 5 + rng.int(-8, 8))), confidence: rng.int(46, 74), adaptability: rng.int(62, 94),
     commercial: Math.max(40, Math.min(99, Math.round(countryByName(country).market * 0.5 + baseTalent * 0.35 + rng.int(-8, 8)))),
     fame: Math.max(12, Math.round((baseTalent - 60) * 1.3 + (series === 'F1' ? 20 : 0))), skills,
-    contract: { through: 2026 + rng.int(1, 3), salary: Math.max(1,Math.round(salaryBase*salaryScale)), status: 'Signed' },
+    contract: { through: 1 + rng.int(1, 3), salary: Math.max(1,Math.round(salaryBase*salaryScale)), status: 'Signed' },
     salaryDemand:Math.max(1,Math.round(demandBase*salaryScale)),
     happiness:{overall:rng.int(54,78),role:rng.int(52,78),results:rng.int(50,76),salary:rng.int(52,78),ambition:rng.int(55,96),reasons:[]},
+    personality:createPersonality(rng), mind:null,
     academy, rookie, active: true, role: 'Race driver', engineerId: null, injuryUntilRound:null, promisedSeat:null, seatPromiseThrough:null,
-    teamJoinedYear:2026-Math.min(Math.max(0,age-debutAge),rng.int(0,6)),yearsInSeries:Math.max(0,age-debutAge),
+    teamJoinedYear:1, preUniverseTeamYears:Math.min(Math.max(0,age-debutAge),rng.int(0,6)), yearsInSeries:Math.max(0,age-debutAge),
     observedRating:Math.round(baseTalent*(curve[curveIndex]||.9)*(0.975+rng.next()*.05)),
     season: { points:0,wins:0,poles:0,podiums:0,starts:0,dnfs:0,bestFinish:null,qualifyingPoints:0,positionsGained:0,wetScore:0,form:[] },
     career: { f1Starts:0,f1Wins:0,f1Poles:0,f1Podiums:0,f1Points:0,titles:0,seriesTitles:0,leMansWins:0,feTitles:0,wecTitles:0,bestFinish:null,seasons:[] },
     trophies: [], history: [], transferHistory:[],
   };
+  driver.mind=initialMind(teamId,driver.happiness.overall);
+  return driver;
 }
 
 export function effectiveDriverSkill(driver,key){
@@ -288,8 +313,8 @@ export function currentDriverRating(driver){
   if(!keys.length)return Math.round((driver?.baseTalent||65)*(driver?.careerMultiplier||.9));
   return Math.round(keys.reduce((sum,key)=>sum+effectiveDriverSkill(driver,key),0)/keys.length);
 }
-export function driverHierarchyScore(driver,year=2026){
-  const tenure=Math.max(0,year-(driver?.teamJoinedYear??year));
+export function driverHierarchyScore(driver,year=1){
+  const tenure=Math.max(0,year-(driver?.teamJoinedYear??year))+(driver?.preUniverseTeamYears||0);
   const experienceYears=Math.max(0,(driver?.age||18)-(driver?.debutAge||18));
   const career=driver?.career||{};
   // Teams cannot see rarity or future potential. They choose hierarchy from current
@@ -301,13 +326,16 @@ export function driverHierarchyScore(driver,year=2026){
   const youthPenalty=driver?.series==='F1'&&(driver?.age||30)<23?3:0;
   return currentDriverRating(driver)+Math.min(tenure,8)*.9+Math.min(experienceYears,15)*.65+success+recent+leadershipPromise-rookiePenalty-youthPenalty;
 }
-export function assignRosterHierarchy(drivers,teamId,year=2026){
+export function assignRosterHierarchy(drivers,teamId,year=1){
   const roster=drivers.filter((driver)=>driver.active!==false&&driver.teamId===teamId&&driver.role==='Race driver');
   roster.sort((a,b)=>driverHierarchyScore(b,year)-driverHierarchyScore(a,year)||currentDriverRating(b)-currentDriverRating(a));
+  // At universe launch, a 21-year-old F1 arrival is still treated as an apprentice
+  // if the team also has an older race driver. The prospect can earn Driver 1 later.
+  if(year===1&&roster[0]?.series==='F1'&&roster[0]?.age===21){const veteranIndex=roster.findIndex((driver,index)=>index>0&&(driver.age||0)>21);if(veteranIndex>0)[roster[0],roster[veteranIndex]]=[roster[veteranIndex],roster[0]];}
   roster.forEach((driver,index)=>{driver.seat=index+1;});
   return roster;
 }
-function syncRaceEngineersForTeam(staff,drivers,team,year=2026){
+function syncRaceEngineersForTeam(staff,drivers,team,year=1){
   const roster=assignRosterHierarchy(drivers,team.id,year);
   const engineers=staff.filter((member)=>member.teamId===team.id&&member.role==='Race Engineer').sort((a,b)=>b.rating-a.rating);
   roster.forEach((driver,index)=>{const engineer=engineers[index];driver.engineerId=engineer?.id||null;if(engineer){engineer.assignedDriverId=driver.id;engineer.assignedSeat=driver.seat;}});
@@ -328,8 +356,8 @@ function createStaff(rng, team, role, index = 0) {
     id:`staff-${team.id}-${role.toLowerCase().replaceAll(' ','-')}-${index}`, name:generateName(rng,country), country, teamId:team.id,
     role, age:rng.int(role === 'Race Engineer' ? 29 : 36, role === 'Race Engineer' ? 55 : 67), rarity,
     rating, commercial, technical, sporting, strategy, specialty:rng.pick(STAFF_SPECIALTIES), personality:rng.pick(STAFF_PERSONALITIES),
-    ambition:rng.int(45,98), contractThrough:2026+rng.int(2,5), salary:Math.max(1,Math.round((rating**2)/520*({F1:1,F2:.34,F3:.22,F4:.13,FE:.42,WEC:.46}[team.series||'F1']||1))), titles:0,wins:0,valueOverExpected:0,
-    assignedDriverId:null,assignedSeat:null,teamJoinedYear:2026-rng.int(0,Math.min(5,Math.max(0,rng.int(0,8)))),history:[],
+    ambition:rng.int(45,98), contractThrough:1+rng.int(2,5), salary:Math.max(1,Math.round((rating**2)/520*({F1:1,F2:.34,F3:.22,F4:.13,FE:.42,WEC:.46}[team.series||'F1']||1))), titles:0,wins:0,valueOverExpected:0,
+    assignedDriverId:null,assignedSeat:null,teamJoinedYear:1,preUniverseTeamYears:rng.int(0,Math.min(5,Math.max(0,rng.int(0,8)))),history:[],careerSeasons:[],relationships:{},
   };
 }
 
@@ -341,7 +369,7 @@ function requiredStaffRoles(team){
     :['Team Principal','Technical Director'];
   return [...leadership,...Array(raceEngineerCount).fill('Race Engineer')];
 }
-function ensureTeamStaff(staff,drivers,team,rng,year=2026){
+function ensureTeamStaff(staff,drivers,team,rng,year=1){
   team.staffIds=team.staffIds||[];
   const required=requiredStaffRoles(team);
   const counts={};
@@ -349,7 +377,7 @@ function ensureTeamStaff(staff,drivers,team,rng,year=2026){
     const index=counts[role]||0;counts[role]=index+1;
     const current=team.staffIds.map((id)=>staff.find((member)=>member.id===id)).filter(Boolean).filter((member)=>member.role===role)[index];
     if(current)return;
-    const member=createStaff(rng,team,role,index);member.contractThrough=year+rng.int(2,5);member.teamJoinedYear=year-rng.int(0,Math.min(5,Math.max(0,year-2026+3)));
+    const member=createStaff(rng,team,role,index);member.contractThrough=year+rng.int(2,5);member.teamJoinedYear=year;member.preUniverseTeamYears=year===1?rng.int(0,5):0;
     staff.push(member);team.staffIds.push(member.id);
   });
   syncRaceEngineersForTeam(staff,drivers,team,year);
@@ -372,7 +400,7 @@ function createTeam(rng, def, sponsorDeck) {
   const mainBrand = MAIN_BRANDS.find((brand)=>brand.id===(brandAlias[def.id]||def.id)) || MAIN_BRANDS.find((brand)=>brand.name===def.owner) || MAIN_BRANDS[0];
   const team = {
     ...def, series:'F1', slotId:`slot-${def.id}`, mainBrandId:mainBrand.id, mainBrandName:mainBrand.name,
-    commercialName:def.name, lineage:[{ year:2026, name:def.name, owner:def.owner, mainBrandId:mainBrand.id, engineId:def.engineId }],
+    commercialName:def.name, lineage:[{ year:1, name:def.name, owner:def.owner, mainBrandId:mainBrand.id, engineId:def.engineId }],
     car:{ high:carValue('high'), low:carValue('low'), straight:carValue('straight'), tyre:carValue('tyre'), mechanical:carValue('mechanical'), energy:carValue('energy'), reliability:carValue('reliability',68), operations:carValue('operations') },
     facilities:{ aero:Math.max(1,Math.min(10,Math.round((def.baseline-52)/4.8+rng.int(-1,1)))), simulator:Math.max(1,Math.min(10,Math.round((def.baseline-52)/4.8+rng.int(-1,1)))), manufacturing:Math.max(1,Math.min(10,Math.round((def.baseline-52)/4.8+rng.int(-1,1)))), pitCrew:Math.max(1,Math.min(10,Math.round((def.baseline-52)/4.8+rng.int(-1,1)))), academy:Math.max(1,Math.min(10,Math.round((def.baseline-58)/4.8+rng.int(-1,1)))) },
     finances:{
@@ -401,7 +429,7 @@ function createTeam(rng, def, sponsorDeck) {
   team.sponsorIds = secondary.map((sponsor)=>sponsor.id);
   team.finances.secondarySponsorIncome = secondary.reduce((sum,sponsor)=>sum+sponsor.value,0);
   team.finances.sponsorIncome = team.finances.mainFunding + team.finances.secondarySponsorIncome;
-  team.liveryHistory.push({ year:2026, primary:def.primary, secondary:def.secondary, titleSponsor:mainBrand.name, note:'Launch identity' });
+  team.liveryHistory.push({ year:1, primary:def.primary, secondary:def.secondary, titleSponsor:mainBrand.name, note:'Launch identity' });
   return team;
 }
 
@@ -416,7 +444,7 @@ function makeSeriesTeams(series) {
     baseline:series==='F4'?62+((index*3)%10):series==='F3'?72+((index*3)%9):series==='F2'?78+((index*5)%10):80+((index*4)%11),
     facilities:{aero:rngSafe(index,3,7),simulator:rngSafe(index+1,3,8),manufacturing:rngSafe(index+2,3,8),pitCrew:rngSafe(index+3,3,8),academy:rngSafe(index+4,3,9)},
     finances:{cash:series==='F4'?rngSafe(index,18,48):series==='F3'?rngSafe(index,32,70):series==='F2'?rngSafe(index,55,110):rngSafe(index,70,145),income:series==='F4'?rngSafe(index,10,24):series==='F3'?rngSafe(index,18,38):series==='F2'?rngSafe(index,32,65):rngSafe(index,45,90),expenses:series==='F4'?rngSafe(index+2,9,23):series==='F3'?rngSafe(index+2,17,37):series==='F2'?rngSafe(index+2,30,64):rngSafe(index+2,44,88),projectedBalance:0,totalIncome:0,totalExpenses:0},
-    season:{points:0,wins:0,poles:0,podiums:0},career:{seasons:[]},staffIds:[],sponsorIds:[],lineage:[{year:2026,name,owner:name}],
+    season:{points:0,wins:0,poles:0,podiums:0},career:{seasons:[]},staffIds:[],sponsorIds:[],lineage:[{year:1,name,owner:name}],
   }));
   teams.forEach((team)=>{
     team.finances.totalIncome=team.finances.income;
@@ -478,7 +506,7 @@ function generateDriversForSeries(rng, series, teams, count, countryBias = [], g
       driver.career.f1Points=Math.round(driver.career.f1Starts*(1.5+eliteFactor*18));
       const titleChance=Math.max(0,years-4)*eliteFactor*.12;
       driver.career.titles=rng.chance(titleChance)?(rng.chance(.2)?2:1):0;
-      driver.teamJoinedYear=2026-Math.min(years,rng.int(0,Math.min(7,years)));
+      driver.preUniverseTeamYears=Math.min(years,rng.int(0,Math.min(7,years)));driver.teamJoinedYear=1;
     }
     drivers.push(driver); team.driverIds.push(driver.id);
   }
@@ -492,15 +520,15 @@ function buildInitialStories(universe) {
   const bestTeam = [...universe.teams].sort((a,b)=>b.baseline-a.baseline)[0];
   const vulnerable = universe.teams.find((team)=>team.finances.vulnerable) || universe.teams.at(-1);
   const starStory=star?.series==='F1'
-    ? { id:'story-launch-2', year:2026, round:0, category:'Driver Market', priority:96, headline:`${star.name} carries the era's only Generational ceiling`, dek:`The ${star.age}-year-old begins in Formula 1, but circuit fit, team strength, reliability and specialist weaknesses still determine whether that ceiling becomes championships.`, subjects:[star.id], thread:'title-rivalry' }
-    : { id:'story-launch-2', year:2026, round:0, category:'Prospect Watch', priority:96, headline:`The universe's rarest prospect begins in ${star?.series||'the ladder'}`, dek:`${star?.name||'A young driver'} starts at age ${star?.age||'—'} in ${star?.series||'the feeder system'}. There is no second Generational driver at launch, so the entire climb can be followed from its beginning.`, subjects:star?[star.id]:[], thread:'famous-rookie' };
+    ? { id:'story-launch-2', year:1, round:0, category:'Driver Market', priority:96, headline:`${star.name} carries the era's only Generational ceiling`, dek:`The ${star.age}-year-old begins in Formula 1, but circuit fit, team strength, reliability and specialist weaknesses still determine whether that ceiling becomes championships.`, subjects:[star.id], thread:'title-rivalry' }
+    : { id:'story-launch-2', year:1, round:0, category:'Prospect Watch', priority:96, headline:`The universe's rarest prospect begins in ${star?.series||'the ladder'}`, dek:`${star?.name||'A young driver'} starts at age ${star?.age||'—'} in ${star?.series||'the feeder system'}. There is no second Generational driver at launch, so the entire climb can be followed from its beginning.`, subjects:star?[star.id]:[], thread:'famous-rookie' };
   const leadingF1=[...f1].sort((a,b)=>b.observedRating-a.observedRating)[0];
   return [
-    { id:'story-launch-1', year:2026, round:0, category:'Pre-season', priority:100, headline:`${bestTeam.name} begins the year as the benchmark`, dek:`The paddock model gives the ${bestTeam.short} package the highest launch ceiling, but circuit-specific car traits mean the same constructor will not lead everywhere.`, subjects:[bestTeam.id], thread:'technical-race' },
+    { id:'story-launch-1', year:1, round:0, category:'Pre-season', priority:100, headline:`${bestTeam.name} begins the year as the benchmark`, dek:`The paddock model gives the ${bestTeam.short} package the highest launch ceiling, but circuit-specific car traits mean the same constructor will not lead everywhere.`, subjects:[bestTeam.id], thread:'technical-race' },
     starStory,
-    { id:'story-launch-3', year:2026, round:0, category:'Prospect Watch', priority:88, headline:`${leadingF1?.name||'The leading driver'} starts as the visible benchmark`, dek:`Current ability is only one piece of the title model. One-lap pace, racecraft, tyre use, wet skill and each car's circuit profile can create very different competitive orders.`, subjects:leadingF1?[leadingF1.id]:[], thread:'title-rivalry' },
-    { id:'story-launch-4', year:2026, round:0, category:'Business', priority:80, headline:`${vulnerable.name} starts under financial scrutiny`, dek:`A weak season or sponsor exit could trigger a sale. Heritage protections do not apply strongly here, making this the grid slot most likely to change identity.`, subjects:[vulnerable.id], thread:'team-survival' },
-    { id:'story-launch-5', year:2026, round:0, category:'Calendar', priority:72, headline:'Madrid joins a calendar built around protected classics', dek:'Monaco, Monza and Silverstone are effectively locked. Rotating venues remain candidates for a single conservative change at season end.', subjects:['madrid'], thread:'calendar-evolution' },
+    { id:'story-launch-3', year:1, round:0, category:'Prospect Watch', priority:88, headline:`${leadingF1?.name||'The leading driver'} starts as the visible benchmark`, dek:`Current ability is only one piece of the title model. One-lap pace, racecraft, tyre use, wet skill and each car's circuit profile can create very different competitive orders.`, subjects:leadingF1?[leadingF1.id]:[], thread:'title-rivalry' },
+    { id:'story-launch-4', year:1, round:0, category:'Business', priority:80, headline:`${vulnerable.name} starts under financial scrutiny`, dek:`A weak season or sponsor exit could trigger a sale. Heritage protections do not apply strongly here, making this the grid slot most likely to change identity.`, subjects:[vulnerable.id], thread:'team-survival' },
+    { id:'story-launch-5', year:1, round:0, category:'Calendar', priority:72, headline:'Madrid joins a calendar built around protected classics', dek:'Monaco, Monza and Silverstone are effectively locked. Rotating venues remain candidates for a single conservative change at season end.', subjects:['madrid'], thread:'calendar-evolution' },
   ];
 }
 
@@ -549,7 +577,7 @@ export function createUniverse(seed = 20260731) {
   const f1Drivers = generateDriversForSeries(rng,'F1',teams,22,f1CountryBias,initialGenerationalSeries==='F1'?1:0);
   teams.forEach((team)=>{
     team.driverIds=[...new Set(team.driverIds)].slice(0,2);
-    syncRaceEngineersForTeam(staff,f1Drivers,team,2026);
+    syncRaceEngineersForTeam(staff,f1Drivers,team,1);
   });
 
   const f2Teams=makeSeriesTeams('F2');
@@ -563,7 +591,7 @@ export function createUniverse(seed = 20260731) {
   const feDrivers=generateDriversForSeries(rng,'FE',feTeams,22);
   const wecDrivers=generateDriversForSeries(rng,'WEC',wecTeams,24);
   const drivers=[...f1Drivers,...f2Drivers,...f3Drivers,...f4Drivers,...feDrivers,...wecDrivers];
-  [f2Teams,f3Teams,f4Teams,feTeams,wecTeams].flat().forEach((team)=>ensureTeamStaff(staff,drivers,team,rng,2026));
+  [f2Teams,f3Teams,f4Teams,feTeams,wecTeams].flat().forEach((team)=>ensureTeamStaff(staff,drivers,team,rng,1));
 
   // Academy links can begin as early as F4, making elite prospects visible for several seasons.
   const feederProspects=[...f2Drivers,...f3Drivers,...f4Drivers].sort((a,b)=>b.observedRating-a.observedRating);
@@ -576,7 +604,7 @@ export function createUniverse(seed = 20260731) {
       const rarity=index<2 && testIndex===0?'Epic':index<7?'Rare':'Uncommon';
       const test=createDriver({rng,id:`test-${team.id}-${testIndex}`,series:'F1',teamId:team.id,seat:3,rarity,age:rng.int(21,34),country:rng.pick(COUNTRIES).name,academy:team.id});
       test.role='Test driver';
-      test.contract.through=2027+rng.int(0,2);
+      test.contract.through=2+rng.int(0,2);
       test.contract.salary=Math.max(2,Math.round(test.contract.salary*.35));
       test.isEmergencyReserve=true;
       drivers.push(test);
@@ -590,7 +618,7 @@ export function createUniverse(seed = 20260731) {
     const rarity=roll>.94?'Legend':roll>.76?'Epic':roll>.42?'Rare':roll>.16?'Uncommon':'Common';
     const free=createDriver({rng,id:`free-agent-${i}`,series:'FREE',teamId:null,seat:0,rarity,age:rng.int(20,36),country:rng.pick(COUNTRIES).name});
     free.role='Free agent';
-    free.contract={through:2026,salary:Math.round(free.baseTalent**2/430),status:'Available'};
+    free.contract={through:1,salary:Math.round(free.baseTalent**2/430),status:'Available'};
     drivers.push(free);
   }
 
@@ -616,11 +644,11 @@ export function createUniverse(seed = 20260731) {
   const competitionCalendars=buildCompetitionCalendars(seed,calendar);
   const universe = {
     schemaVersion:SCHEMA_VERSION, seed, createdAt:new Date().toISOString(), name:`Chronicle ${String(seed).slice(-4)}`,
-    year:2026, seasonIndex:1, series:'F1', currentWeek:1, currentRound:0, currentSession:0, phase:'Pre-season',
+    year:1, seasonIndex:1, series:'F1', currentWeek:1, currentRound:0, currentSession:0, phase:'Pre-season',
     teams, staff, engines:ENGINES, mainBrands:MAIN_BRANDS, sponsors:SPONSOR_BRANDS,
     drivers, feederTeams:{F2:f2Teams,F3:f3Teams,F4:f4Teams,FE:feTeams,WEC:wecTeams},
     calendar, competitionCalendars, circuitPool:[...CIRCUIT_POOL,...Object.values(VIRTUAL_CIRCUITS)], sessionResults:[], raceResults:[],
-    feederResults:{F2:[],F3:[],F4:[],FE:[],WEC:[]}, competitionEventResults:{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]}, eventArchive:[], marketHistory:[], preseasonReports:[],
+    feederResults:{F2:[],F3:[],F4:[],FE:[],WEC:[]}, competitionEventResults:{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]}, eventArchive:[], marketHistory:[], preseasonReports:[], rivalries:[],
     competitions:[
       {id:'F1',name:'Formula 1 World Championship',level:100},
       {id:'F2',name:'Formula 2 Championship',level:82},
@@ -640,6 +668,7 @@ export function createUniverse(seed = 20260731) {
     records:{fastestLaps:[],youngestWins:[],classicRaces:[],teamLineage:[],driverMilestones:[]},
     seasonArchive:[], awards:[], pendingDecisions:[], storyCounter:0,
     settings:{calendarChurn:'Conservative',teamDynamism:'Plausible',authenticLock:true,detailLevel:'Full',autoSave:true},
+    rules:{fastestLapPoint:false},
     ui:{selectedSeries:'F1'},
   };
   universe.stories=buildInitialStories(universe);
@@ -658,13 +687,41 @@ export function countryFlag(codeOrName){
   const iso2=countryIso2(codeOrName);
   return [...iso2].map((letter)=>String.fromCodePoint(127397+letter.charCodeAt(0))).join('');
 }
+function convertLegacyUniverseYears(universe){
+  const yearKeys=new Set(['year','retiredYear','teamJoinedYear','contractThrough','seatPromiseThrough','lastMarketYear']);
+  const walk=(value,key='')=>{
+    if(Array.isArray(value))return value.map((item)=>walk(item,key));
+    if(value&&typeof value==='object'){
+      Object.keys(value).forEach((child)=>{value[child]=walk(value[child],child);});
+      return value;
+    }
+    if(typeof value==='number'&&value>=2000&&(yearKeys.has(key)||key==='through'||key==='contract'))return Math.max(1,value-2025);
+    return value;
+  };
+  walk(universe);
+  universe.year=Math.max(1,universe.year||universe.seasonIndex||1);
+  universe.seasonIndex=universe.year;
+  return universe;
+}
+function convertLegacyYearText(text){
+  return typeof text==='string'?text.replace(/\b20(?:2[6-9]|[3-9]\d)\b/g,(match)=>`Year ${Number(match)-2025}`):text;
+}
+function convertLegacyNarrativeYears(universe){
+  (universe.stories||[]).forEach((story)=>{story.headline=convertLegacyYearText(story.headline);story.dek=convertLegacyYearText(story.dek);});
+  (universe.drivers||[]).forEach((driver)=>{if(Array.isArray(driver.trophies))driver.trophies=driver.trophies.map(convertLegacyYearText);});
+}
+function defaultLegacyPersonality(driver){
+  const seed=[...String(driver.id||driver.name||'driver')].reduce((sum,ch)=>sum+ch.charCodeAt(0),0)+(driver.baseTalent||70)*17;
+  return createPersonality(makeRng(seed));
+}
 export function hydrateUniverse(input){
+  const sourceVersion=input?.schemaVersion||0;
   const universe=structuredClone(input);
+  if(sourceVersion<12){if(Number(universe.year||0)>=2000)convertLegacyUniverseYears(universe);convertLegacyNarrativeYears(universe);}
   universe.schemaVersion=SCHEMA_VERSION;
   universe.competitionCalendars=universe.competitionCalendars||buildCompetitionCalendars(universe.seed||20260731,universe.calendar||[]);
   universe.competitionEventResults=universe.competitionEventResults||{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]};
-  universe.eventArchive=universe.eventArchive||[];universe.marketHistory=universe.marketHistory||[];universe.preseasonReports=universe.preseasonReports||[];
-  const sourceVersion=input?.schemaVersion||0;
+  universe.eventArchive=universe.eventArchive||[];universe.marketHistory=universe.marketHistory||[];universe.preseasonReports=universe.preseasonReports||[];universe.rivalries=universe.rivalries||[];universe.rules={fastestLapPoint:false,...(universe.rules||{})};
   universe.drivers=(universe.drivers||[]).map((driver)=>{
     const scale=SERIES_SALARY_SCALE[driver.series]||.25;
     const legacyMultiplier=sourceVersion<7&&driver.series!=='F1'&&driver.role!=='Test driver'?scale:1;
@@ -672,12 +729,26 @@ export function hydrateUniverse(input){
     const demand=sourceVersion<7&&driver.series!=='F1'&&driver.role!=='Test driver'
       ?Math.max(1,Math.round((driver.salaryDemand||((driver.baseTalent||70)**2)/285)*scale))
       :(driver.salaryDemand||Math.max(2,Math.round(((driver.baseTalent||70)**2)/285*scale)));
-    return {...driver,contract,
-      seat:(driver.role==='Test driver'||driver.role==='Reserve driver')?3:(driver.seat||1),
+    const debut=driver.debutAge||18;
+    let curve=[...(driver.careerCurve||[])];
+    const minimumLength=Math.max(8,30-debut+1,driver.active!==false?Math.max(0,(driver.age||debut)-debut+2):0);
+    if(curve.length<minimumLength){
+      let last=curve.at(-1)??driver.careerMultiplier??.9;
+      while(curve.length<minimumLength){last=Math.max(.78,Number((last-.018).toFixed(3)));curve.push(last);}
+    }
+    const retired=driver.role==='Retired'||driver.active===false;
+    const prematureRetirement=sourceVersion<11&&retired&&(driver.age||99)<30;
+    return {...driver,contract,careerCurve:curve,careerLength:Math.max(driver.careerLength||curve.length,curve.length),
+      active:prematureRetirement?true:driver.active,role:prematureRetirement?'Free agent':driver.role,series:prematureRetirement?'FREE':driver.series,retiredYear:prematureRetirement?null:driver.retiredYear,retirementReason:prematureRetirement?null:driver.retirementReason,
+      seat:prematureRetirement?0:(driver.role==='Test driver'||driver.role==='Reserve driver')?3:(driver.seat||1),
+      teamId:prematureRetirement?null:(retired?null:driver.teamId),lastTeamId:driver.lastTeamId||(retired?driver.teamId:null),
       trackSpecialty:driver.trackSpecialty||({'Wet-weather artist':'Wet weather','Tyre whisperer':'Tyre-limited circuits','Late braker':'Street circuits','Precision driver':'Technical circuits','Qualifying specialist':'High-speed circuits','Overtaking specialist':'Technical circuits','Defensive specialist':'Street circuits'}[driver.style]||'Balanced'),
       salaryDemand:demand,
       happiness:driver.happiness||{overall:64,role:64,results:62,salary:62,ambition:75,reasons:[]},
       transferHistory:driver.transferHistory||[],promisedSeat:driver.promisedSeat||null,seatPromiseThrough:driver.seatPromiseThrough||null,
+      personality:driver.personality||defaultLegacyPersonality(driver),
+      mind:{...initialMind(prematureRetirement?null:driver.teamId,driver.happiness?.overall||64),...(driver.mind||{}),teamSentiments:{...(driver.mind?.teamSentiments||{})},people:{...(driver.mind?.people||{})},thoughts:[...(driver.mind?.thoughts||[])],press:[...(driver.mind?.press||[])],official:{...(driver.mind?.official||{})}},
+      preUniverseTeamYears:driver.preUniverseTeamYears||0,
     };
   });
   if(sourceVersion<10){
@@ -693,12 +764,12 @@ export function hydrateUniverse(input){
     const facilities=Object.fromEntries(Object.entries(team.facilities||{}).map(([key,value])=>[key,value>10?Math.max(1,Math.min(10,Number((value/10).toFixed(1)))):value]));
     return {...team,facilities,staffIds:team.staffIds||[],testDriverIds:team.testDriverIds||[],finances:team.finances||{cash:100,totalIncome:0,totalExpenses:0,projectedBalance:0}};
   });
-  universe.staff=(universe.staff||[]).map((member)=>({...member,rarity:member.rarity||'Common',assignedDriverId:member.assignedDriverId||null,assignedSeat:member.assignedSeat||null,teamJoinedYear:member.teamJoinedYear||universe.year||2026,history:member.history||[]}));
-  Object.values(universe.feederTeams||{}).flat().forEach((team)=>{team.carProfile=team.carProfile||{high:team.rating||72,low:team.rating||72,straight:team.rating||72,tyre:team.rating||72,reliability:team.rating||72};team.baseline=team.baseline||team.rating||72;team.facilities=team.facilities||{aero:5,simulator:5,manufacturing:5,pitCrew:5,academy:5};team.finances=team.finances||{cash:60,income:0,expenses:0,projectedBalance:0,totalIncome:0,totalExpenses:0};team.season=team.season||{points:team.points||0,wins:team.wins||0,poles:0,podiums:0};team.staffIds=team.staffIds||[];team.lineage=team.lineage||[{year:universe.year||2026,name:team.name,owner:team.name}];});
+  universe.staff=(universe.staff||[]).map((member)=>({...member,rarity:member.rarity||'Common',assignedDriverId:member.assignedDriverId||null,assignedSeat:member.assignedSeat||null,teamJoinedYear:member.teamJoinedYear||universe.year||1,preUniverseTeamYears:member.preUniverseTeamYears||0,history:member.history||[],careerSeasons:member.careerSeasons||[],relationships:{...(member.relationships||{})}}));
+  Object.values(universe.feederTeams||{}).flat().forEach((team)=>{team.carProfile=team.carProfile||{high:team.rating||72,low:team.rating||72,straight:team.rating||72,tyre:team.rating||72,reliability:team.rating||72};team.baseline=team.baseline||team.rating||72;team.facilities=team.facilities||{aero:5,simulator:5,manufacturing:5,pitCrew:5,academy:5};team.finances=team.finances||{cash:60,income:0,expenses:0,projectedBalance:0,totalIncome:0,totalExpenses:0};team.season=team.season||{points:team.points||0,wins:team.wins||0,poles:0,podiums:0};team.staffIds=team.staffIds||[];team.lineage=team.lineage||[{year:universe.year||1,name:team.name,owner:team.name}];});
   universe.currentWeek=universe.currentWeek||1;
-  universe.drivers.forEach((driver)=>{driver.teamJoinedYear=driver.teamJoinedYear??(universe.year||2026);driver.yearsInSeries=driver.yearsInSeries??Math.max(0,(driver.age||18)-(driver.debutAge||18));});
-  const hydrateRng=makeRng((universe.seed||20260731)+(universe.year||2026)*97);
-  [...universe.teams,...Object.values(universe.feederTeams||{}).flat()].forEach((team)=>ensureTeamStaff(universe.staff,universe.drivers,team,hydrateRng,universe.year||2026));
+  universe.drivers.forEach((driver)=>{driver.teamJoinedYear=driver.teamJoinedYear??(universe.year||1);driver.yearsInSeries=driver.yearsInSeries??Math.max(0,(driver.age||18)-(driver.debutAge||18));});
+  const hydrateRng=makeRng((universe.seed||20260731)+(universe.year||1)*97);
+  [...universe.teams,...Object.values(universe.feederTeams||{}).flat()].forEach((team)=>ensureTeamStaff(universe.staff,universe.drivers,team,hydrateRng,universe.year||1));
   return universe;
 }
 export function getTeam(universe,id) { return universe.teams.find((team)=>team.id===id) || Object.values(universe.feederTeams||{}).flat().find((team)=>team.id===id); }

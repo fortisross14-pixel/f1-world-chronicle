@@ -50,6 +50,12 @@ jobs:
       - name: Run universe v6 market test
         run: npm run universe-v6
 
+      - name: Run universe v8 history and career test
+        run: npm run universe-v8
+
+      - name: Run universe v9 personality and rivalry test
+        run: npm run universe-v9
+
       # package.json invokes Vite through Node directly, so the build does not
       # depend on the executable bit of node_modules/.bin/vite.
       - name: Build GitHub Pages bundle

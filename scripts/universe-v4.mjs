@@ -41,13 +41,13 @@ assert.ok(Object.keys(developing.skills).some((key)=>effectiveDriverSkill(develo
 
 // Hierarchy uses current quality, experience, team tenure and success—not rarity alone.
 const template=structuredClone(activeRaceDrivers[0]);
-const veteran={...structuredClone(template),id:'hierarchy-veteran',teamId:'hierarchy-team',name:'Veteran Champion',age:33,debutAge:24,teamJoinedYear:2026,seat:2,rarity:'Epic',career:{...template.career,titles:2,f1Wins:20,f1Podiums:50,seriesTitles:0},season:{...template.season,points:0,wins:0},careerCurve:[1],curveIndex:0,careerMultiplier:1,annualForm:1,confidence:65,skills:Object.fromEntries(Object.keys(template.skills).map((key)=>[key,86]))};
-const prospect={...structuredClone(template),id:'hierarchy-prospect',teamId:'hierarchy-team',name:'Young Legend',age:20,debutAge:18,teamJoinedYear:2024,seat:1,rarity:'Legend',career:{...template.career,titles:0,f1Wins:0,f1Podiums:0,seriesTitles:0},season:{...template.season,points:0,wins:0},careerCurve:[.82],curveIndex:0,careerMultiplier:.82,annualForm:1,confidence:65,skills:Object.fromEntries(Object.keys(template.skills).map((key)=>[key,99]))};
-let hierarchy=assignRosterHierarchy([prospect,veteran],'hierarchy-team',2026);
+const veteran={...structuredClone(template),id:'hierarchy-veteran',teamId:'hierarchy-team',name:'Veteran Champion',age:33,debutAge:24,teamJoinedYear:1,seat:2,rarity:'Epic',career:{...template.career,titles:2,f1Wins:20,f1Podiums:50,seriesTitles:0},season:{...template.season,points:0,wins:0},careerCurve:[1],curveIndex:0,careerMultiplier:1,annualForm:1,confidence:65,skills:Object.fromEntries(Object.keys(template.skills).map((key)=>[key,86]))};
+const prospect={...structuredClone(template),id:'hierarchy-prospect',teamId:'hierarchy-team',name:'Young Legend',age:20,debutAge:18,teamJoinedYear:1,seat:1,rarity:'Legend',career:{...template.career,titles:0,f1Wins:0,f1Podiums:0,seriesTitles:0},season:{...template.season,points:0,wins:0},careerCurve:[.82],curveIndex:0,careerMultiplier:.82,annualForm:1,confidence:65,skills:Object.fromEntries(Object.keys(template.skills).map((key)=>[key,99]))};
+let hierarchy=assignRosterHierarchy([prospect,veteran],'hierarchy-team',1);
 assert.equal(hierarchy[0].id,veteran.id,'A proven two-time champion should lead a still-developing prospect');
 prospect.careerCurve=[1.02];prospect.careerMultiplier=1.02;prospect.age=25;prospect.debutAge=18;prospect.teamJoinedYear=2024;prospect.career.f1Wins=8;
 veteran.career.titles=0;veteran.career.f1Wins=2;veteran.skills=Object.fromEntries(Object.keys(veteran.skills).map((key)=>[key,75]));
-hierarchy=assignRosterHierarchy([prospect,veteran],'hierarchy-team',2029);
+hierarchy=assignRosterHierarchy([prospect,veteran],'hierarchy-team',4);
 assert.equal(hierarchy[0].id,prospect.id,'A developed star should be able to earn Driver 1 status later');
 
 // Flags are bundled locally for drivers, staff, teams and venues.
