@@ -133,6 +133,7 @@ function testDriverContribution(universe,team){
   return avg(tests.map((driver)=>effectiveDriverSkill(driver,'feedback')*.55+effectiveDriverSkill(driver,'consistency')*.2+driver.experience*.25));
 }
 function teamPrincipal(universe,team){
+  if(!team)return null;
   return (team.staffIds||[]).map((id)=>getStaff(universe,id)).find((member)=>member?.role==='Team Principal');
 }
 function teamStaffRating(universe, team, role) {
@@ -667,6 +668,21 @@ function updatePowerRankings(universe,event){
   createStory(universe,{category:'Power Rankings',headline:`${lead.name} leads the model after Round ${event.round}`,dek:`This is not the constructors' table. The ranking combines recent form, circuit-independent car strength, reliability, strategy and development trajectory.`,priority:64,subjects:[lead.id],round:event.round});
 }
 
+function refreshF1RoleLists(universe,team){
+  if(!team)return;
+  team.driverIds=universe.drivers.filter((driver)=>driver.active&&driver.teamId===team.id&&driver.series==='F1'&&driver.role==='Race driver'&&!driver.coveringFor).map((driver)=>driver.id);
+  team.testDriverIds=universe.drivers.filter((driver)=>driver.active&&driver.teamId===team.id&&driver.series==='F1'&&driver.role==='Test driver').map((driver)=>driver.id);
+}
+function normalizeF1RaceRoster(universe,team){
+  if(!team)return;
+  const race=universe.drivers.filter((driver)=>driver.active&&driver.teamId===team.id&&driver.series==='F1'&&driver.role==='Race driver');
+  if(race.length>2){
+    const keep=[...race].sort((a,b)=>((a.coveringFor||a.performanceTrialFor)?-3:0)-((b.coveringFor||b.performanceTrialFor)?-3:0)||(a.seat||9)-(b.seat||9)||driverHierarchyScore(b,universe.year)-driverHierarchyScore(a,universe.year)).slice(0,2);
+    const keepIds=new Set(keep.map((driver)=>driver.id));
+    race.filter((driver)=>!keepIds.has(driver.id)).forEach((driver)=>{driver.role='Test driver';driver.seat=3;driver.coveringFor=null;driver.performanceTrialFor=null;driver.performanceTrialUntilRound=null;});
+  }
+  refreshF1RoleLists(universe,team);syncTeamHierarchyAndEngineers(universe,team);
+}
 function managePerformanceTrials(universe){
   universe.drivers.filter((driver)=>driver.performanceTrialFor&&driver.role==='Race driver'&&driver.performanceTrialUntilRound!=null&&universe.currentRound>=driver.performanceTrialUntilRound).forEach((trialDriver)=>{
     const incumbent=getDriver(universe,trialDriver.performanceTrialFor);const team=getTeam(universe,trialDriver.teamId);
@@ -680,7 +696,19 @@ function managePerformanceTrials(universe){
       if(incumbent){incumbent.performanceBenched=false;incumbent.benchedFor=null;incumbent.role='Race driver';incumbent.seat=incumbent.benchedSeat||2;incumbent.benchedSeat=null;}
       createStory(universe,{category:'Driver Market',headline:`${incumbent?.name||'The incumbent'} retakes the ${team?.name||'team'} seat`,dek:`The test-driver trial produced ${trialPoints} points, below the 10-point retention threshold. The original race driver returns.`,priority:65,subjects:[trialDriver.id,incumbent?.id,team?.id].filter(Boolean),round:universe.currentRound+1});
     }
-    if(team)syncTeamHierarchyAndEngineers(universe,team);
+    if(team){refreshF1RoleLists(universe,team);syncTeamHierarchyAndEngineers(universe,team);}
+  });
+}
+function settleOpenPerformanceTrials(universe){
+  universe.drivers.filter((driver)=>driver.performanceTrialFor&&driver.role==='Race driver').forEach((trialDriver)=>{
+    const incumbent=getDriver(universe,trialDriver.performanceTrialFor);const team=getTeam(universe,trialDriver.teamId);if(!team)return;
+    const trialPoints=(trialDriver.season?.points||0)-(trialDriver.trialStartPoints||0);
+    const ratingGap=incumbent?observedDriverValue(trialDriver)-observedDriverValue(incumbent):99;
+    const keep=trialPoints>=10||(trialPoints>=5&&ratingGap>=6);
+    trialDriver.performanceTrialFor=null;trialDriver.performanceTrialUntilRound=null;trialDriver.trialStartPoints=null;
+    if(keep){trialDriver.role='Race driver';trialDriver.promotedFromTest=true;if(incumbent){incumbent.performanceBenched=false;incumbent.benchedFor=null;incumbent.role='Test driver';incumbent.seat=3;}}
+    else{trialDriver.role='Test driver';trialDriver.seat=3;if(incumbent){incumbent.performanceBenched=false;incumbent.benchedFor=null;incumbent.role='Race driver';incumbent.seat=incumbent.benchedSeat||2;incumbent.benchedSeat=null;}}
+    refreshF1RoleLists(universe,team);syncTeamHierarchyAndEngineers(universe,team);
   });
 }
 function maybeStartPerformanceTrial(universe,rng){
@@ -706,6 +734,7 @@ function maybeStartPerformanceTrial(universe,rng){
 
 function manageInjuriesAndReserves(universe){
   managePerformanceTrials(universe);
+  universe.teams.forEach((team)=>normalizeF1RaceRoster(universe,team));
   // Restore race drivers when their recovery round is reached.
   universe.drivers.filter((driver)=>driver.role==='Injured'&&driver.injuryUntilRound!==null&&universe.currentRound>=driver.injuryUntilRound).forEach((driver)=>{
     driver.role='Race driver';driver.injuryUntilRound=null;
@@ -926,23 +955,105 @@ function candidateScore(universe,prospect,team){
   const principalPull=((teamPrincipal(universe,team)?.rating||72)-70)*.10;
   return visible*.72+results+commercial+academy+principalPull-costPenalty;
 }
+function seriesCareerPrestige(series){return{F1:100,F2:68,F3:50,F4:36,FE:74,WEC:76,FREE:12}[series]||20;}
+function teamMarketStrength(universe,team,series=team?.series||'F1'){
+  if(!team)return 12;
+  const sporting=sportingPackage(universe,team,series);
+  const prestige=seriesCareerPrestige(series);
+  if(series!=='F1')return clamp(sporting*.66+prestige*.34,15,96);
+  const currentTable=constructorStandings(universe);
+  const livePosition=Math.max(1,currentTable.findIndex((item)=>item.id===team.id)+1);
+  const archivedPosition=team.career?.seasons?.at(-1)?.position||livePosition;
+  const position=universe.phase==='Pre-season'?archivedPosition:livePosition;
+  const form=clamp(100-(position-1)*4.3,54,100);
+  const cash=clamp(48+(team.finances?.cash||0)/11+(team.finances?.projectedBalance||0)*.05,35,100);
+  const brand=getMainBrand(universe,team.mainBrandId);
+  const brandPower=brand?clamp((brand.prestige||70)*.58+(brand.funding||300)/8.5*.42,45,100):65;
+  const facilities=clamp(avg(Object.values(team.facilities||{}))*10,20,100);
+  // Recruitment looks beyond last Sunday's table. Works backing, facilities and
+  // sustained technical quality make Ferrari/McLaren/Red Bull-style projects
+  // attractive even after one bad year, while a genuinely wealthy rising team can
+  // still break into the elite group through facilities and cash.
+  return clamp(sporting*.45+brandPower*.22+facilities*.13+cash*.12+form*.08,20,100);
+}
+function driverMarketMerit(universe,driver){
+  const pointsFactor={F1:.010,F2:.014,F3:.016,F4:.017,FE:.018,WEC:.018,FREE:0}[driver.series]||0;
+  const seriesBonus={F1:2.8,F2:1.6,F3:.5,F4:-.8,FE:1.2,WEC:1.4,FREE:-1.2}[driver.series]||0;
+  const results=Math.min(8,(driver.season?.wins||0)*1.05+(driver.season?.podiums||0)*.18+(driver.season?.points||0)*pointsFactor);
+  const pedigree=Math.min(6,(driver.career?.titles||0)*2.1+(driver.career?.seriesTitles||0)*.65+(driver.career?.f1Wins||0)*.06);
+  const ageAdjustment=driver.age>=36?-2.5:driver.age>=33?-1:driver.age<=20?-1.5:0;
+  return currentDriverRating(driver)+seriesBonus+results+pedigree+ageAdjustment;
+}
+function careerOpportunityScore(universe,driver){
+  if(driver.role==='Free agent'||driver.series==='FREE')return 18;
+  if(driver.role==='Test driver')return driver.series==='F1'?32:28;
+  const rating=currentDriverRating(driver);
+  if(driver.series==='F1'){
+    const team=getTeam(universe,driver.teamId);if(!team)return 22;
+    const ordered=universe.teams.map((candidate)=>({team:candidate,strength:teamMarketStrength(universe,candidate,'F1')})).sort((a,b)=>b.strength-a.strength);
+    const strengths=ordered.map((item)=>item.strength);const rank=Math.max(1,ordered.findIndex((item)=>item.team.id===team.id)+1);
+    const current=teamMarketStrength(universe,team,'F1');const fourth=strengths[Math.min(3,strengths.length-1)]||current;
+    let score=clamp(58+(current-(strengths[0]||current))*1.15,28,94);
+    if(rating>=90&&rank>4)score=Math.min(score,32);
+    else if(rating>=87&&rank>4)score=Math.min(score,38);
+    else if(rating>=85&&rank>6)score=Math.min(score,43);
+    if(rating>=88&&current<fourth-4)score-=6;
+    if((driver.eliteMarketPressure||0)>=1)score-=6;
+    if((driver.eliteMarketPressure||0)>=2)score=Math.min(score,24);
+    return clamp(score,20,96);
+  }
+  if(driver.series==='F2'){
+    if(driver.age>=20&&rating>=86)return 28;
+    if(driver.age>=20&&rating>=82)return 40;
+    return driver.age<=19?72:56;
+  }
+  if(['FE','WEC'].includes(driver.series)){
+    if(driver.age<=31&&rating>=89)return 30;
+    if(driver.age<=32&&rating>=85)return 43;
+    return driver.age>=34?76:62;
+  }
+  if(driver.series==='F3')return driver.age<=19?74:rating>=82?48:62;
+  if(driver.series==='F4')return driver.age<=18?78:rating>=80?52:65;
+  return 55;
+}
+function updateEliteMarketPressure(universe){
+  const topTeams=f1MarketTeamOrder(universe).slice(0,4);
+  const topTeamIds=new Set(topTeams.map((team)=>team.id));
+  const visibleTop7=universe.drivers.filter((driver)=>driver.active&&driver.role!=='Retired'&&(driver.age+1)>=21&&(driver.age+1)<=34)
+    .sort((a,b)=>currentDriverRating(b)-currentDriverRating(a)||driverMarketMerit(universe,b)-driverMarketMerit(universe,a)).slice(0,7);
+  const eliteIds=new Set(visibleTop7.map((driver)=>driver.id));
+  universe.drivers.forEach((driver)=>{
+    const comfortablyPlaced=driver.series==='F1'&&driver.role==='Race driver'&&topTeamIds.has(driver.teamId);
+    if(eliteIds.has(driver.id)&&!comfortablyPlaced)driver.eliteMarketPressure=Math.min(4,(driver.eliteMarketPressure||0)+1);
+    else driver.eliteMarketPressure=0;
+    const f2Ready=driver.active&&driver.series==='F2'&&driver.role==='Race driver'&&(driver.age+1)>=21&&(currentDriverRating(driver)>=84||(driver.season?.wins||0)>=3);
+    driver.f1OpportunityWait=f2Ready?Math.min(3,(driver.f1OpportunityWait||0)+1):0;
+  });
+}
 function updateDriverHappiness(universe){
   const positions={};['F1','F2','F3','F4','FE','WEC'].forEach((series)=>driverStandings(universe,series).forEach((driver,index)=>{positions[driver.id]=index+1;}));
   universe.drivers.filter((driver)=>driver.active&&driver.role!=='Retired').forEach((driver)=>{
     const position=positions[driver.id]||99;const field=driver.series==='F1'?22:(universe.drivers.filter((d)=>d.active&&d.series===driver.series&&d.role==='Race driver').length||22);
-    const roleScore=driver.role==='Race driver'?(driver.seat===1?82:driver.seat===2?61:52):driver.role==='Test driver'?42:driver.role==='Free agent'?28:48;
-    const resultsScore=driver.role==='Race driver'?clamp(88-(position-1)*(62/Math.max(1,field-1))+driver.season.wins*2.5,24,96):45;
+    const roleScore=driver.role==='Race driver'?(driver.seat===1?84:driver.seat===2?64:52):driver.role==='Test driver'?39:driver.role==='Free agent'?24:48;
+    const resultsScore=driver.role==='Race driver'?clamp(88-(position-1)*(62/Math.max(1,field-1))+driver.season.wins*2.3,24,96):42;
     const salary=driver.contract?.salary||0;const demand=driver.salaryDemand||Math.max(2,Math.round((driver.baseTalent**2)/285));const salaryScore=clamp(48+(salary-demand)*2.2,22,94);
-    const titleBonus=driver.season.wins>0?4:0;const blocked=driver.seat===2&&driver.happiness?.ambition>74&&driver.season.points>0?-(9+(driver.career.titles===0&&driver.age>=25?6:0)):0;
-    const overall=clamp(roleScore*.34+resultsScore*.35+salaryScore*.21+(driver.confidence||60)*.1+titleBonus+blocked,20,96);
-    const reasons=[];if(driver.role==='Test driver')reasons.push('wants a race seat');if(driver.seat===2&&driver.happiness?.ambition>74)reasons.push('wants first-driver status');if(resultsScore<48)reasons.push('frustrated by results');if(salaryScore<48)reasons.push('expects a larger contract');if(position<=3)reasons.push('happy with championship form');
-    driver.happiness={...(driver.happiness||{}),overall:Math.round(overall),role:Math.round(roleScore),results:Math.round(resultsScore),salary:Math.round(salaryScore),reasons};
+    const opportunity=careerOpportunityScore(universe,driver);
+    const titleBonus=driver.season.wins>0?3:0;const blocked=driver.seat===2&&driver.happiness?.ambition>74&&driver.season.points>0?-(7+(driver.career.titles===0&&driver.age>=25?5:0)):0;
+    let overall=clamp(roleScore*.25+resultsScore*.26+salaryScore*.18+opportunity*.23+(driver.confidence||60)*.08+titleBonus+blocked,18,96);
+    const rating=currentDriverRating(driver);
+    if(driver.series==='F1'&&rating>=88&&opportunity<=38)overall=Math.min(overall,82);
+    if(driver.series==='F1'&&rating>=85&&opportunity<=43)overall=Math.min(overall,84);
+    if((driver.eliteMarketPressure||0)>=2)overall=Math.min(overall,68);
+    if(['F2','FE','WEC'].includes(driver.series)&&driver.age<=32&&rating>=86&&opportunity<48)overall=Math.min(overall,78);
+    if(driver.role==='Free agent'&&rating>=84)overall=Math.min(overall,54);
+    const reasons=[];if(driver.role==='Test driver')reasons.push('wants a race seat');if(driver.seat===2&&driver.happiness?.ambition>74)reasons.push('wants first-driver status');if(resultsScore<48)reasons.push('frustrated by results');if(salaryScore<48)reasons.push('expects a larger contract');if(opportunity<48)reasons.push(driver.series==='F1'?'believes a stronger team offers a better title chance':'believes he is ready for a stronger championship');if(position<=3)reasons.push('happy with championship form');
+    driver.happiness={...(driver.happiness||{}),overall:Math.round(overall),role:Math.round(roleScore),results:Math.round(resultsScore),salary:Math.round(salaryScore),opportunity:Math.round(opportunity),reasons};
     const championPremium=driver.career.titles>0?Math.min(1.28,1.08+driver.career.titles*.04):1;const performancePremium=driver.season.wins>2?1.18:position<=3?1.08:.98;driver.salaryDemand=Math.max(1,Math.round(expectedSalary(driver,driver.series,driver.seat)*performancePremium*championPremium));
   });
 }
 function seriesSalaryFactor(series){return{F1:1,F2:.40,F3:.20,F4:.08,FE:.65,WEC:.70,FREE:.22}[series]||.25;}
 function expectedSalary(driver,series=driver.series,seat=driver.seat||2){const base=Math.max(3,observedDriverValue(driver)**2/320);const roleMultiplier = seat === 1 ? 1.10 : seat === 2 ? .96 : seat === 3 ? .42 : 1;return Math.max(1,Math.round(base*seriesSalaryFactor(series)*roleMultiplier));}
-function marketTeamBudget(team,series){if(series==='F1')return Math.max(0,(team.finances?.cash||0)+Math.max(-40,team.finances?.projectedBalance||0)*.35-80);return Math.max(6,(team.finances?.cash||40)*.35);}
+function marketTeamBudget(team,series){if(series==='F1')return Math.max(0,(team.finances?.cash||0)+Math.max(-40,team.finances?.projectedBalance||0)*.35-65);return Math.max(6,(team.finances?.cash||40)*.35);}
 function applyPromisedSeatHierarchy(universe,driver,team,series,seat){
   if(!team||driver.role!=='Race driver')return;
   const roster=universe.drivers.filter((candidate)=>candidate.active&&candidate.series===series&&candidate.role==='Race driver'&&candidate.teamId===team.id&&candidate.id!==driver.id)
@@ -954,10 +1065,27 @@ function applyPromisedSeatHierarchy(universe,driver,team,series,seat){
 function recordTransfer(universe,driver,from,to,reason){
   universe.marketHistory=universe.marketHistory||[];const entry={id:`market-${universe.year+1}-${universe.marketHistory.length+1}`,year:universe.year+1,driverId:driver.id,driverName:driver.name,from,to,reason};universe.marketHistory.unshift(entry);driver.transferHistory=driver.transferHistory||[];driver.transferHistory.unshift(entry);driver.lastMarketYear=entry.year;return entry;
 }
+function marketOriginFor(universe,driver){
+  const oldTeam=getTeam(universe,driver.teamId);
+  return {teamId:oldTeam?.id||null,teamName:oldTeam?.name||((driver.role==='Free agent'||driver.series==='FREE')?'Free agents':'Independent'),series:driver.series,seat:driver.seat||0,role:driver.role,salary:driver.contract?.salary||0};
+}
+function releaseForMarket(universe,driver,reason='Released to the market'){
+  if(!driver||driver.marketOrigin)return;
+  driver.marketOrigin={...marketOriginFor(universe,driver),releaseReason:reason};
+  moveDriver(universe,driver,'FREE',null,'Free agent',0);
+  driver.contract={...(driver.contract||{}),through:universe.year+1,salary:Math.max(1,Math.round((driver.contract?.salary||2)*.25)),status:'Available'};
+}
+function finalizeMarketRelease(universe,driver){
+  if(!driver?.marketOrigin)return;
+  const from={...driver.marketOrigin};delete from.releaseReason;
+  const to={teamId:null,teamName:'Free agents',series:'FREE',seat:0,role:'Free agent',salary:driver.contract?.salary||0};
+  recordTransfer(universe,driver,from,to,driver.marketOrigin.releaseReason||'Released to free agency');
+  driver.marketOrigin=null;
+}
 function moveWithMarket(universe,driver,newSeries,newTeamId,role,seat,salary,reason){
-  const oldTeam=getTeam(universe,driver.teamId);const from={teamId:oldTeam?.id||null,teamName:oldTeam?.name||((driver.role==='Free agent'||driver.series==='FREE')?'Free agents':'Independent'),series:driver.series,seat:driver.seat||0,role:driver.role,salary:driver.contract?.salary||0};
+  const from=driver.marketOrigin?(()=>{const copy={...driver.marketOrigin};delete copy.releaseReason;return copy;})():marketOriginFor(universe,driver);
   moveDriver(universe,driver,newSeries,newTeamId,role,seat);driver.teamJoinedYear=universe.year+1;driver.preUniverseTeamYears=0;driver.publicConflictDemotionCandidate=false;driver.promisedSeat=role==='Race driver'?(seat||null):null;driver.seatPromiseThrough=role==='Race driver'&&seat?universe.year+1:null;const newTeam=getTeam(universe,newTeamId);applyPromisedSeatHierarchy(universe,driver,newTeam,newSeries,seat);driver.contract={through:universe.year+(newSeries==='F1'?rngContract(driver):2),salary:Math.max(1,Math.round(salary)),status:role==='Race driver'?'Signed':role};driver.salaryDemand=expectedSalary(driver,newSeries,driver.seat);
-  const to={teamId:newTeam?.id||null,teamName:newTeam?.name||'Free agents',series:newSeries,seat:driver.seat||0,role,salary:driver.contract.salary};recordTransfer(universe,driver,from,to,reason);return{from,to};
+  const to={teamId:newTeam?.id||null,teamName:newTeam?.name||'Free agents',series:newSeries,seat:driver.seat||0,role,salary:driver.contract.salary};recordTransfer(universe,driver,from,to,reason);driver.marketOrigin=null;return{from,to};
 }
 function rngContract(driver){return driver.age<23?3:2;}
 function sportingPackage(universe,team,series){
@@ -968,16 +1096,29 @@ function sportingPackage(universe,team,series){
   const principal=teamPrincipal(universe,team)?.rating||72;
   return clamp(car*.44+facilities*.23+staff*.20+principal*.13,20,99);
 }
+function careerSportingPackage(universe,team,series){
+  if(!team)return series==='FREE'?10:18;
+  const sporting=sportingPackage(universe,team,series);
+  // F1 drivers evaluate both today's car and the organisation's ability to stay
+  // competitive. A historically rich, well-funded technical operation remains a
+  // more credible title destination than a one-season midfield spike.
+  if(series==='F1')return clamp(sporting*.52+teamMarketStrength(universe,team,'F1')*.30+seriesCareerPrestige(series)*.18,10,100);
+  return clamp(sporting*.64+seriesCareerPrestige(series)*.36,10,100);
+}
 function offerPackageScore(universe,driver,team,series,seat,salary){
-  const role=driver.role==='Test driver'&&seat>=3?25:seat===1?96:seat===2?66:42;
+  const role=driver.role==='Test driver'&&seat>=3?25:seat===1?96:seat===2?69:42;
   const demand=Math.max(1,driver.salaryDemand||expectedSalary(driver,series,seat));
   const pay=clamp(55+(salary-demand)/demand*55,15,100);
-  const titles=sportingPackage(universe,team,series);
-  return role*.34+pay*.33+titles*.33;
+  const titles=careerSportingPackage(universe,team,series);
+  const principal=((teamPrincipal(universe,team)?.rating||70)-70)*.12;
+  return role*.32+pay*.31+titles*.37+principal;
 }
 function acceptsOffer(universe,driver,team,series,seat,salary){
   const happiness=driver.happiness?.overall??65;
-  if(happiness>85)return false;
+  // The >85 loyalty lock applies while the driver still has a seat. If the team
+  // has just released him during a market cascade, stale pre-market happiness
+  // cannot make him reject every available contract and drift into FE/WEC.
+  if(happiness>85&&driver.role!=='Free agent'&&!driver.marketOrigin)return false;
   const currentTeam=getTeam(universe,driver.teamId);
   const current=offerPackageScore(universe,driver,currentTeam,driver.series,driver.seat||3,driver.contract?.salary||0);
   const offered=offerPackageScore(universe,driver,team,series,seat,salary);
@@ -987,89 +1128,247 @@ function acceptsOffer(universe,driver,team,series,seat,salary){
 }
 function willingnessScore(driver,series,seat,salary){
   const level={F4:1,F3:2,F2:3,FE:3.4,WEC:3.5,F1:5,FREE:0}[series]||0;const current={F4:1,F3:2,F2:3,FE:3.4,WEC:3.5,F1:5,FREE:0}[driver.series]||0;
-  const promotion=(level-current)*10;const roleGain=(driver.seat||3)-seat;const moneyGain=(salary-(driver.contract?.salary||0))*1.2;const discontent=(70-(driver.happiness?.overall||65))*.65;return promotion+roleGain*7+moneyGain+discontent;
+  const promotion=(level-current)*10;const roleGain=(driver.seat||3)-seat;const moneyGain=(salary-(driver.contract?.salary||0))*1.05;const discontent=(70-(driver.happiness?.overall||65))*.65;return promotion+roleGain*7+moneyGain+discontent;
 }
-function lowestRaceDriver(universe,team,series){return universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId===team.id&&driver.lastMarketYear!==universe.year+1).sort((a,b)=>observedDriverValue(a)-observedDriverValue(b)||a.season.points-b.season.points)[0];}
+function lowestRaceDriver(universe,team,series){return universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId===team.id&&driver.lastMarketYear!==universe.year+1).sort((a,b)=>driverMarketMerit(universe,a)-driverMarketMerit(universe,b)||a.season.points-b.season.points)[0];}
 function syncTeamHierarchyAndEngineers(universe,team){
   const roster=assignRosterHierarchy(universe.drivers,team.id,universe.year);
   const engineers=(team.staffIds||[]).map((id)=>getStaff(universe,id)).filter((member)=>member?.role==='Race Engineer').sort((a,b)=>b.rating-a.rating);
   roster.forEach((driver,index)=>{const engineer=engineers[index];driver.engineerId=engineer?.id||null;if(engineer){engineer.assignedDriverId=driver.id;engineer.assignedSeat=driver.seat;}});
   engineers.slice(roster.length).forEach((engineer)=>{engineer.assignedDriverId=null;engineer.assignedSeat=null;});
 }
-function seatMarket(universe,rng){
-  updateDriverHappiness(universe);universe.marketHistory=(universe.marketHistory||[]).filter((entry)=>entry.year>=universe.year-4);
-  const completedYear=universe.year;const nextYear=universe.year+1;const moved=new Set();let moves=0;
-  // First assign explicit first/second-driver hierarchy from current observed status, while preserving a successful champion as leader.
-  universe.teams.forEach((team)=>syncTeamHierarchyAndEngineers(universe,team));
-  // Teams may retain a driver by improving salary and preserving a valued role.
+function f1MarketTeamOrder(universe){
+  return [...universe.teams].sort((a,b)=>teamMarketStrength(universe,b,'F1')-teamMarketStrength(universe,a,'F1')||marketTeamBudget(b,'F1')-marketTeamBudget(a,'F1'));
+}
+function f1OfferSalary(universe,driver,team,seat,priority=false){
+  const expected=expectedSalary(driver,'F1',seat);
+  const demand=Math.max(expected,driver.salaryDemand||0,driver.series==='F1'?(driver.contract?.salary||0):0);
+  const principal=teamPrincipal(universe,team)?.rating||72;
+  const premium=priority?1.16:1.0;
+  const negotiated=demand*(.96+(principal-70)*.0025)*premium;
+  return Math.max(expected,Math.round(negotiated));
+}
+function canFundF1Offer(team,salary){
+  const budget=marketTeamBudget(team,'F1');
+  const cash=team.finances?.cash||0;
+  return salary<=Math.max(24,budget*.36+26)||cash>=salary*3.1;
+}
+function findF1Offer(universe,driver,{priority=false,allTeams=false,blockedTeamIds=null}={}){
+  const teamOrder=f1MarketTeamOrder(universe);
+  const topIds=new Set(teamOrder.slice(0,4).map((team)=>team.id));
+  const currentTeam=driver.series==='F1'&&driver.role==='Race driver'?getTeam(universe,driver.teamId):null;
+  const currentStrength=currentTeam?teamMarketStrength(universe,currentTeam,'F1'):0;
+  const merit=driverMarketMerit(universe,driver);
+  const urgentElite=(driver.eliteMarketPressure||0)>=2;
+  const candidateTeams=allTeams?teamOrder:(priority?teamOrder.slice(0,4):teamOrder.slice(0,6));
+  const offers=[];
+  for(const team of candidateTeams){
+    if(team.id===driver.teamId||blockedTeamIds?.has(team.id))continue;
+    const weak=lowestRaceDriver(universe,team,'F1');if(!weak)continue;
+    const weakMerit=driverMarketMerit(universe,weak);
+    const strength=teamMarketStrength(universe,team,'F1');
+    // Prime stars will move even for a modest sporting upgrade when it comes from
+    // an established top-four title platform. Normal moves still need a clearly
+    // stronger destination.
+    if(currentTeam&&strength<currentStrength+(urgentElite?0:priority?.75:3.75))continue;
+    // Top teams do not wait until their weakest driver is obviously inferior. If a
+    // truly elite visible performer reaches the market, they are willing to replace
+    // a merely comparable incumbent to secure the long-term seat.
+    const requiredGap=priority&&topIds.has(team.id)?(urgentElite?-3.5:-2.0):allTeams?.8:1.8;
+    const currentGap=currentDriverRating(driver)-currentDriverRating(weak);
+    const weakChampionProtected=(weak.career?.titles||0)>=(urgentElite?3:2)&&currentGap<(urgentElite?0:1.5)&&merit<weakMerit+(urgentElite?0:1);
+    if(weakChampionProtected)continue;
+    // For a priority star, raw *current* ability is itself a market signal. A 96
+    // visible driver in a bad car should not be blocked because the incumbent's
+    // better machinery gave him more points last year. Proven results still matter,
+    // but a top-four team will make room when the current-value gap is compelling.
+    const currentStarUpgrade=priority&&topIds.has(team.id)&&currentDriverRating(driver)>=87&&currentGap>=(urgentElite?-2:-1);
+    if(!currentStarUpgrade&&merit<weakMerit+requiredGap)continue;
+    const other=universe.drivers.filter((candidate)=>candidate.active&&candidate.series==='F1'&&candidate.role==='Race driver'&&candidate.teamId===team.id&&candidate.id!==weak.id).sort((a,b)=>driverMarketMerit(universe,b)-driverMarketMerit(universe,a))[0];
+    const otherMerit=other?driverMarketMerit(universe,other):-99;
+    const protectedLeader=other&&((other.career?.titles||0)>=2&&otherMerit>=merit-1.5||otherMerit>merit+2.5);
+    const seat=!other||merit>=otherMerit+1.2||(priority&&!protectedLeader)?1:2;
+    const salary=f1OfferSalary(universe,driver,team,seat,priority);
+    if(!canFundF1Offer(team,salary))continue;
+    const packageScore=offerPackageScore(universe,driver,team,'F1',seat,salary);
+    if(!acceptsOffer(universe,driver,team,'F1',seat,salary))continue;
+    offers.push({team,weak,seat,salary,score:packageScore+strength*.38+((teamPrincipal(universe,team)?.rating||70)-70)*.08});
+  }
+  return offers.sort((a,b)=>b.score-a.score)[0]||null;
+}
+function completeF1Signing(universe,driver,offer,reason,moved){
+  releaseForMarket(universe,offer.weak,`${offer.team.name} upgraded its Formula 1 line-up`);
+  const transfer=moveWithMarket(universe,driver,'F1',offer.team.id,'Race driver',offer.seat,offer.salary,reason);
+  driver.confidence=Math.max(driver.confidence||60,72);moved.add(driver.id);
+  createStory(universe,{category:'Driver Market',headline:`${driver.name} joins ${offer.team.name} as driver ${offer.seat}`,dek:`${transfer.from.teamName} (${transfer.from.seat||'—'}) ${transfer.from.series}, $${transfer.from.salary}m → ${offer.team.name} (${offer.seat}) F1, $${offer.salary}m. ${offer.seat===1?'The team offered leadership as well as a stronger title platform.':'The sporting package and salary were strong enough to close the deal.'}`,priority:96,subjects:[driver.id,offer.team.id],round:0});
+  return transfer;
+}
+function renewRemainingDrivers(universe){
+  const completedYear=universe.year;const nextYear=universe.year+1;
   const allMarketTeams=[...universe.teams,...Object.values(universe.feederTeams||{}).flat()];
   allMarketTeams.forEach((team)=>{
     const series=team.series||'F1';
     const roster=universe.drivers.filter((driver)=>driver.active&&driver.teamId===team.id&&driver.role==='Race driver');
     roster.forEach((driver)=>{
+      if(driver.lastMarketYear===nextYear)return;
       const due=driver.contract?.through<=completedYear||(driver.contract?.salary||0)<(driver.salaryDemand||0)*.84;
-      if(!due||driver.lastMarketYear===nextYear)return;
+      if(!due)return;
       const budget=marketTeamBudget(team,series);const current=driver.contract?.salary||1;const demand=Math.max(current,driver.salaryDemand||expectedSalary(driver,series,driver.seat));
-      const offer=Math.max(current,Math.min(demand,Math.round(current+Math.max(1,budget*.08))));
-      const happy=driver.happiness?.overall??65;const retain=happy>85||offer>=demand*.90||happy>=70&&offer>=demand*.82;
+      const offer=Math.max(current,Math.min(demand,Math.round(current+Math.max(1,budget*.09))));
+      const happy=driver.happiness?.overall??65;
+      const teamValuesDriver=driverMarketMerit(universe,driver)>=avg(roster.map((item)=>driverMarketMerit(universe,item)))-3;
+      const retain=teamValuesDriver&&(happy>85||offer>=demand*.90||happy>=70&&offer>=demand*.82||happy>=50&&offer>=demand);
       if(!retain)return;
       const from={teamId:team.id,teamName:team.name,series,seat:driver.seat,role:driver.role,salary:current};
       driver.contract={...driver.contract,through:completedYear+(driver.age<25?3:2),salary:offer,status:'Renewed'};driver.salaryDemand=Math.max(offer,expectedSalary(driver,series,driver.seat));
-      const to={...from,salary:offer};recordTransfer(universe,driver,from,to,'Contract renewed after salary and role review');
+      const to={...from,salary:offer};recordTransfer(universe,driver,from,to,'Contract renewed after salary, role and sporting review');
     });
   });
-  const destinationTeams=[...universe.teams].sort((a,b)=>marketTeamBudget(b,'F1')-marketTeamBudget(a,'F1')||a.season.points-b.season.points);
-  for(const team of destinationTeams){
-    if(moves>=4)break;const roster=universe.drivers.filter((d)=>d.active&&d.series==='F1'&&d.role==='Race driver'&&d.teamId===team.id);if(roster.length<2)continue;
-    const eligibleOutgoing=roster.filter((driver)=>driver.lastMarketYear!==nextYear);if(!eligibleOutgoing.length)continue;
-    const outgoing=[...eligibleOutgoing].sort((a,b)=>(a.happiness?.overall||70)-(b.happiness?.overall||70)||observedDriverValue(a)-observedDriverValue(b))[0];
-    const ambitiousUpgrade=(team.finances?.projectedBalance||0)>95&&observedDriverValue(outgoing)<88&&rng.chance(.44);const teamNeedsChange=outgoing.contract?.through<=completedYear||(outgoing.happiness?.overall||70)<48||(outgoing.season.points<8&&rng.chance(.55))||ambitiousUpgrade;if(!teamNeedsChange&&rng.chance(.78))continue;
-    const candidates=universe.drivers.filter((driver)=>driver.active&&!moved.has(driver.id)&&driver.lastMarketYear!==nextYear&&driver.id!==outgoing.id&&driver.teamId!==team.id&&(['F1','F2','FE','WEC','FREE'].includes(driver.series)||driver.role==='Test driver')&&driver.role!=='Retired'&&driver.age>=21).map((driver)=>{
-      const offerSeat=roster.some((d)=>d.id!==outgoing.id&&d.seat===1&&d.season.points>driver.season.points)?2:1;const base=Math.max(3,observedDriverValue(driver)**2/370);const offerSalary=Math.round(base*(offerSeat===1?1.08:.94));const score=candidateScore(universe,driver,team)+willingnessScore(driver,'F1',offerSeat,offerSalary)+(driver.series==='F2'&&driver.season.wins>1?7:0);return{driver,offerSeat,offerSalary,score};
-    }).filter((offer)=>offer.offerSalary<=marketTeamBudget(team,'F1')*.42+38&&offer.score>58).sort((a,b)=>b.score-a.score);
-    const chosen=candidates[0];if(!chosen)continue;const accepts=acceptsOffer(universe,chosen.driver,team,'F1',chosen.offerSeat,chosen.offerSalary)||chosen.driver.contract?.through<=completedYear&&(chosen.driver.happiness?.overall||0)<=85;if(!accepts)continue;
-    // Displaced drivers normally seek a lead role elsewhere rather than disappearing.
-    const fallbackSeries=outgoing.age>31?(rng.chance(.5)?'WEC':'FE'):'FREE';if(fallbackSeries==='FREE'){moveWithMarket(universe,outgoing,'FREE',null,'Free agent',0,Math.max(1,Math.round((outgoing.contract?.salary||10)*.2)),'F1 seat lost after contract review');outgoing.contract.status='Available';}else{const dest=[...universe.feederTeams[fallbackSeries]].sort((a,b)=>b.rating-a.rating)[0];const displaced=lowestRaceDriver(universe,dest,fallbackSeries);if(displaced){moveWithMarket(universe,displaced,'FREE',null,'Free agent',0,1,`${fallbackSeries} roster space opened`);}moveWithMarket(universe,outgoing,fallbackSeries,dest.id,'Race driver',1,Math.max(4,Math.round((outgoing.contract?.salary||12)*.58)),'Accepted a lead role outside F1');}
-    const transfer=moveWithMarket(universe,chosen.driver,'F1',team.id,'Race driver',chosen.offerSeat,chosen.offerSalary,chosen.offerSeat===1?'Signed as first driver':'Signed for the second race seat');chosen.driver.confidence=72;moved.add(chosen.driver.id);moves+=1;
-    createStory(universe,{category:'Driver Market',headline:`${chosen.driver.name} joins ${team.name} as driver ${chosen.offerSeat}`,dek:`${transfer.from.teamName} (${transfer.from.seat||'—'}) ${transfer.from.series}, $${transfer.from.salary}m → ${team.name} (${chosen.offerSeat}) F1, $${chosen.offerSalary}m. ${chosen.offerSeat===1?'Leadership status helped close the deal.':'The team offered the stronger sporting package.'}`,priority:94,subjects:[chosen.driver.id,team.id],round:0});
-  }
-  // A standout F2 season can create an F1 opportunity even when the market was
-  // otherwise quiet. Teams still see only current ability and results—not rarity.
-  const f2Breakthrough=driverStandings(universe,'F2').filter((driver)=>driver.age>=21&&!moved.has(driver.id)&&driver.lastMarketYear!==nextYear&&(driver.season.wins>=2||driver.season.points>=120)&&observedDriverValue(driver)>=80).slice(0,2);
-  for(const prospect of f2Breakthrough){
-    const targets=[...universe.teams].map((team)=>({team,weak:lowestRaceDriver(universe,team,'F1')})).filter(({team,weak})=>weak&&weak.lastMarketYear!==nextYear&&marketTeamBudget(team,'F1')>25&&observedDriverValue(prospect)>=observedDriverValue(weak)+2).sort((a,b)=>observedDriverValue(a.weak)-observedDriverValue(b.weak)||a.team.season.points-b.team.season.points);
-    const option=targets[0];if(!option)continue;const seat=2;const salary=expectedSalary(prospect,'F1',seat);if(!acceptsOffer(universe,prospect,option.team,'F1',seat,salary))continue;
-    moveWithMarket(universe,option.weak,'FREE',null,'Free agent',0,Math.max(1,Math.round((option.weak.contract?.salary||6)*.25)),'Seat lost to a proven F2 prospect');
-    const transfer=moveWithMarket(universe,prospect,'F1',option.team.id,'Race driver',seat,salary,'F2 results forced an F1 opportunity');moved.add(prospect.id);moves+=1;
-    createStory(universe,{category:'Driver Market',headline:`${prospect.name} earns an F1 seat after a breakthrough F2 year`,dek:`${transfer.from.teamName} → ${option.team.name}. The move was triggered by visible wins, points and current pace rather than hidden potential.`,priority:91,subjects:[prospect.id,option.team.id],round:0});
-    break;
+}
+function signFreeAgentIntoSeries(universe,driver,series,team,seat,salary,reason,moved){
+  const weak=lowestRaceDriver(universe,team,series);if(!weak)return false;
+  releaseForMarket(universe,weak,`${team.name} used the market to upgrade its line-up`);
+  moveWithMarket(universe,driver,series,team.id,'Race driver',seat,salary,reason);moved.add(driver.id);return true;
+}
+function seatMarket(universe,rng){
+  updateEliteMarketPressure(universe);updateDriverHappiness(universe);universe.marketHistory=(universe.marketHistory||[]).filter((entry)=>entry.year>=universe.year-4);
+  const completedYear=universe.year;const nextYear=universe.year+1;const moved=new Set();const f1RecruitingTeams=new Set();let moves=0;let f1Moves=0;let emergencyEliteMoves=0;
+  universe.teams.forEach((team)=>syncTeamHierarchyAndEngineers(universe,team));
+
+  // MARKET PHASE 1 — the best visible drivers attract bids from the strongest F1 teams.
+  // Rarity and future career curves are not used: teams react to current ability,
+  // results and proven pedigree. This lets a small team discover a star for one year,
+  // but makes sustained prime-age elite talent on weak machinery difficult to keep.
+  const elitePool=universe.drivers.filter((driver)=>driver.active&&driver.role!=='Retired'&&(driver.age+1)>=21&&(driver.age+1)<=35);
+  // There are two ways to become a must-call driver: be one of the best visible
+  // drivers in the world right now, or create an irresistible season/pedigree.
+  // This prevents a 92-rated star on poor machinery from being ignored merely
+  // because the car kept his points total low.
+  const currentElite=[...elitePool].sort((a,b)=>currentDriverRating(b)-currentDriverRating(a)||driverMarketMerit(universe,b)-driverMarketMerit(universe,a)).slice(0,7);
+  const performanceElite=[...elitePool].sort((a,b)=>driverMarketMerit(universe,b)-driverMarketMerit(universe,a)).slice(0,8);
+  // Current world-class ability gets first call on the scarce elite seats. Only
+  // after those seven drivers have been evaluated do teams move on to additional
+  // breakout/pedigree candidates. This stops an 86-rated former champion from
+  // consuming the last movable top-team seat before a 94-rated star on a weak car.
+  const eligibleElite=[...new Map([...currentElite,...performanceElite].map((driver)=>[driver.id,driver])).values()];
+  const topTeams=f1MarketTeamOrder(universe).slice(0,4);const topTeamIds=new Set(topTeams.map((team)=>team.id));
+  for(const driver of eligibleElite){
+    const emergency=(driver.eliteMarketPressure||0)>=2;
+    if(f1Moves>=2&&(!emergency||emergencyEliteMoves>=2))continue;
+    if(driver.lastMarketYear===nextYear||moved.has(driver.id))continue;
+    if(driver.series==='F1'&&driver.role==='Race driver'&&topTeamIds.has(driver.teamId))continue;
+    const offer=findF1Offer(universe,driver,{priority:true,allTeams:false,blockedTeamIds:(driver.eliteMarketPressure||0)>=2?null:f1RecruitingTeams});if(!offer)continue;
+    completeF1Signing(universe,driver,offer,'Poached after elite visible performance triggered a top-team bidding battle',moved);f1RecruitingTeams.add(offer.team.id);if(emergency&&f1Moves>=2)emergencyEliteMoves+=1;moves+=1;f1Moves+=1;
   }
 
-  // One or two visible same-category moves in each secondary championship. These create careers, not just promotions.
+  // If the exact top four are full of equally proven champions, an elite driver on
+  // a genuinely weak F1 team still seeks a major step forward. This creates the
+  // realistic Alpine/Racing-Bulls -> Aston/Audi -> Ferrari/McLaren progression
+  // instead of trapping a world-class driver on the ninth-best project for years.
+  const eliteStepUps=eligibleElite.filter((driver)=>driver.series==='F1'&&driver.role==='Race driver'&&!topTeamIds.has(driver.teamId)&&!moved.has(driver.id)&&driver.lastMarketYear!==nextYear&&currentDriverRating(driver)>=85);
+  for(const driver of eliteStepUps){
+    const urgentStep=(driver.eliteMarketPressure||0)>=2;
+    if(f1Moves>=3&&(!urgentStep||emergencyEliteMoves>=2))continue;
+    const current=getTeam(universe,driver.teamId);const currentRank=f1MarketTeamOrder(universe).findIndex((team)=>team.id===current?.id)+1;
+    if(currentRank>0&&currentRank<=5&&(driver.eliteMarketPressure||0)<2)continue;
+    const offer=findF1Offer(universe,driver,{priority:true,allTeams:true,blockedTeamIds:(driver.eliteMarketPressure||0)>=2?null:f1RecruitingTeams});if(!offer)continue;
+    completeF1Signing(universe,driver,offer,'A world-class driver forced a move to a substantially stronger F1 project when the absolute top seats were closed',moved);f1RecruitingTeams.add(offer.team.id);if(urgentStep&&f1Moves>=3)emergencyEliteMoves+=1;moves+=1;f1Moves+=1;
+  }
+
+  // MARKET PHASE 2 — F2 performance must open the F1 door. A driver who is old
+  // enough for next season and is visibly dominating cannot remain trapped purely
+  // because the normal F1 market happened to be quiet.
+  const f2Table=driverStandings(universe,'F2');
+  const f2Breakthrough=f2Table.filter((driver,index)=>(driver.age+1)>=21&&!moved.has(driver.id)&&driver.lastMarketYear!==nextYear&&((index<2&&currentDriverRating(driver)>=79)||driver.season.wins>=3||currentDriverRating(driver)>=85||(driver.f1OpportunityWait||0)>=2))
+    .sort((a,b)=>(b.f1OpportunityWait||0)-(a.f1OpportunityWait||0)||currentDriverRating(b)-currentDriverRating(a)).slice(0,2);
+  let emergencyF2Move=0;
+  for(const prospect of f2Breakthrough){
+    const overdue=(prospect.f1OpportunityWait||0)>=2;
+    if(f1Moves>=4&&(!overdue||emergencyF2Move>=1))continue;
+    const offer=findF1Offer(universe,prospect,{priority:currentDriverRating(prospect)>=85||overdue,allTeams:true,blockedTeamIds:overdue?null:f1RecruitingTeams});if(!offer)continue;
+    completeF1Signing(universe,prospect,offer,'F2 results and current pace forced Formula 1 teams to act',moved);f1RecruitingTeams.add(offer.team.id);if(overdue&&f1Moves>=4)emergencyF2Move+=1;prospect.f1OpportunityWait=0;moves+=1;f1Moves+=1;
+  }
+
+  // MARKET PHASE 3 — prime world-class drivers do not quietly disappear into FE,
+  // WEC or free agency. Those championships remain realistic late-career options,
+  // but a visibly elite 22–32 year-old will draw F1 interest first.
+  const primeOutsideF1=universe.drivers.filter((driver)=>driver.active&&!moved.has(driver.id)&&driver.lastMarketYear!==nextYear&&(driver.age+1)>=21&&(driver.age+1)<=32&&driver.role!=='Retired'&&!(driver.series==='F1'&&driver.role==='Race driver')&&currentDriverRating(driver)>=86)
+    .sort((a,b)=>driverMarketMerit(universe,b)-driverMarketMerit(universe,a)).slice(0,5);
+  for(const driver of primeOutsideF1){
+    if(f1Moves>=5)break;const offer=findF1Offer(universe,driver,{priority:true,allTeams:true,blockedTeamIds:f1RecruitingTeams});if(!offer)continue;
+    completeF1Signing(universe,driver,offer,'Prime-age elite form created an immediate Formula 1 opportunity',moved);f1RecruitingTeams.add(offer.team.id);moves+=1;f1Moves+=1;
+  }
+
+  // Secondary championships still have internal markets. Stronger entrants recruit
+  // visible performers, but every driver can complete only one final move per winter.
   ['F2','F3','F4','FE','WEC'].forEach((series)=>{
-    const teams=[...(universe.feederTeams[series]||[])].sort((a,b)=>b.rating-a.rating);if(teams.length<2)return;const count=series==='F2'?2:1;
-    for(let i=0;i<count;i+=1){const target=teams[i%Math.min(3,teams.length)];const current=lowestRaceDriver(universe,target,series);const pool=universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId!==target.id&&!moved.has(driver.id)&&driver.lastMarketYear!==nextYear&&((driver.happiness?.overall||70)<64||driver.contract?.through<=completedYear)).sort((a,b)=>observedDriverValue(b)-observedDriverValue(a)||b.season.points-a.season.points);const candidate=pool[0];if(!candidate||!current||observedDriverValue(candidate)<observedDriverValue(current)-2)continue;const seat=observedDriverValue(candidate)>observedDriverValue(current)+3?1:2;const salary=expectedSalary(candidate,series,seat);if(!acceptsOffer(universe,candidate,target,series,seat,salary))continue;moveWithMarket(universe,current,'FREE',null,'Free agent',0,1,`${series} seat lost`);const transfer=moveWithMarket(universe,candidate,series,target.id,'Race driver',seat,salary,seat===1?'Moved for first-driver status':'Moved to a stronger entrant');moved.add(candidate.id);moves+=1;createStory(universe,{category:'Driver Market',headline:`${candidate.name} switches teams in ${series}`,dek:`${transfer.from.teamName} (${transfer.from.seat}) ${series}, $${transfer.from.salary}m → ${target.name} (${seat}) ${series}, $${salary}m. ${seat===1?'The promise of leadership outweighed salary alone.':'The destination offers a stronger car and title chance.'}`,priority:70,subjects:[candidate.id,target.id],round:0});}
+    const teams=[...(universe.feederTeams[series]||[])].sort((a,b)=>teamMarketStrength(universe,b,series)-teamMarketStrength(universe,a,series));if(teams.length<2)return;const count=series==='F2'?2:1;
+    for(let i=0;i<count;i+=1){
+      const target=teams[i%Math.min(3,teams.length)];const current=lowestRaceDriver(universe,target,series);if(!current)continue;
+      const pool=universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId!==target.id&&!moved.has(driver.id)&&driver.lastMarketYear!==nextYear&&((driver.happiness?.overall||70)<64||driver.contract?.through<=completedYear)).sort((a,b)=>driverMarketMerit(universe,b)-driverMarketMerit(universe,a));
+      const candidate=pool[0];if(!candidate||driverMarketMerit(universe,candidate)<driverMarketMerit(universe,current)+1.5)continue;
+      const seat=driverMarketMerit(universe,candidate)>driverMarketMerit(universe,current)+4?1:2;const salary=expectedSalary(candidate,series,seat);if(!acceptsOffer(universe,candidate,target,series,seat,salary))continue;
+      releaseForMarket(universe,current,`${series} seat lost to a stronger visible performer`);const transfer=moveWithMarket(universe,candidate,series,target.id,'Race driver',seat,salary,seat===1?'Moved for first-driver status':'Moved to a stronger entrant');moved.add(candidate.id);moves+=1;
+      createStory(universe,{category:'Driver Market',headline:`${candidate.name} switches teams in ${series}`,dek:`${transfer.from.teamName} (${transfer.from.seat}) ${series}, $${transfer.from.salary}m → ${target.name} (${seat}) ${series}, $${salary}m.`,priority:70,subjects:[candidate.id,target.id],round:0});
+    }
   });
-  // Promotions remain performance-led; lower ladders refill later.
-  const promote=(fromSeries,toSeries,count)=>{const candidates=driverStandings(universe,fromSeries).filter((driver)=>!moved.has(driver.id)&&driver.lastMarketYear!==nextYear).slice(0,count);candidates.forEach((driver,index)=>{const targets=universe.feederTeams[toSeries];if(!targets)return;const target=[...targets].sort((a,b)=>b.rating-a.rating)[index%targets.length];const targetRoster=universe.drivers.filter((candidate)=>candidate.active&&candidate.series===toSeries&&candidate.role==='Race driver'&&candidate.teamId===target.id);const displaced=lowestRaceDriver(universe,target,toSeries);if(targetRoster.length>=rosterCapacity(toSeries)&&!displaced)return;if(displaced)moveWithMarket(universe,displaced,'FREE',null,'Free agent',0,1,`${toSeries} seat lost to promoted prospect`);const salary=expectedSalary(driver,toSeries,2);const transfer=moveWithMarket(universe,driver,toSeries,target.id,'Race driver',2,salary,`${fromSeries} performance earned promotion`);moved.add(driver.id);moves+=1;createStory(universe,{category:'Driver Market',headline:`${driver.name} graduates from ${fromSeries} to ${toSeries}`,dek:`${transfer.from.teamName} (${transfer.from.seat}) ${fromSeries} → ${target.name} (2) ${toSeries}, $${salary}m. Teams saw the results and current value—not hidden rarity or future potential.`,priority:82,subjects:[driver.id,target.id],round:0});});};
+
+  // Promotions remain performance-led. Champions and leading prospects should not
+  // repeat lower categories indefinitely when a higher-tier seat can be created.
+  const promote=(fromSeries,toSeries,count)=>{
+    const candidates=driverStandings(universe,fromSeries).filter((driver,index)=>!moved.has(driver.id)&&driver.lastMarketYear!==nextYear&&(index<count||driver.season.wins>=3)).slice(0,count);
+    candidates.forEach((driver,index)=>{
+      const targets=universe.feederTeams[toSeries];if(!targets)return;const target=[...targets].sort((a,b)=>teamMarketStrength(universe,b,toSeries)-teamMarketStrength(universe,a,toSeries))[index%targets.length];
+      const targetRoster=universe.drivers.filter((candidate)=>candidate.active&&candidate.series===toSeries&&candidate.role==='Race driver'&&candidate.teamId===target.id);const displaced=lowestRaceDriver(universe,target,toSeries);
+      if(targetRoster.length>=rosterCapacity(toSeries)&&!displaced)return;if(displaced)releaseForMarket(universe,displaced,`${toSeries} seat lost to a promoted prospect`);
+      const salary=expectedSalary(driver,toSeries,2);const transfer=moveWithMarket(universe,driver,toSeries,target.id,'Race driver',2,salary,`${fromSeries} performance earned promotion`);moved.add(driver.id);moves+=1;
+      createStory(universe,{category:'Driver Market',headline:`${driver.name} graduates from ${fromSeries} to ${toSeries}`,dek:`${transfer.from.teamName} (${transfer.from.seat}) ${fromSeries} → ${target.name} (2) ${toSeries}, $${salary}m.`,priority:82,subjects:[driver.id,target.id],round:0});
+    });
+  };
   promote('F4','F3',2);promote('F3','F2',2);
-  // Strong free agents are market opportunities, not automatic lost seasons.
-  const freeAgents=universe.drivers.filter((driver)=>driver.active&&driver.role==='Free agent'&&driver.lastMarketYear!==nextYear).sort((a,b)=>observedDriverValue(b)-observedDriverValue(a));
-  let freeSignings=0;
+
+  // Open market. Elite free agents are evaluated first and can trigger a direct
+  // replacement rather than spending an arbitrary lost season outside a grid.
+  const freeAgents=universe.drivers.filter((driver)=>driver.active&&driver.role==='Free agent'&&driver.lastMarketYear!==nextYear&&!moved.has(driver.id)).sort((a,b)=>driverMarketMerit(universe,b)-driverMarketMerit(universe,a));
+  let secondaryFreeSignings=0;
   for(const free of freeAgents){
-    if(freeSignings>=2)break;
-    const preferred=free.age>=21&&observedDriverValue(free)>=82?['F1','FE','WEC','F2']:free.age<=23?['F2','F3','FE','WEC']:['FE','WEC','F2'];
-    let signed=false;
+    const nextAge=free.age+1;const rating=currentDriverRating(free);
+    if(nextAge>=21&&nextAge<=34&&rating>=82&&f1Moves<6){
+      const offer=findF1Offer(universe,free,{priority:rating>=86,allTeams:true,blockedTeamIds:f1RecruitingTeams});
+      if(offer){completeF1Signing(universe,free,offer,rating>=86?'Every serious F1 team reviewed an elite free agent':'Signed from free agency after a visible-value review',moved);f1RecruitingTeams.add(offer.team.id);moves+=1;f1Moves+=1;continue;}
+    }
+    if(secondaryFreeSignings>=3)continue;
+    const preferred=nextAge<=23?['F2','F3','FE','WEC']:nextAge>=34?['WEC','FE','F2']:['FE','WEC','F2'];let signed=false;
     for(const series of preferred){
-      const teams=series==='F1'?universe.teams:(universe.feederTeams?.[series]||[]);
-      const options=teams.map((team)=>({team,weak:lowestRaceDriver(universe,team,series)})).filter(({team,weak})=>weak&&weak.lastMarketYear!==nextYear&&observedDriverValue(free)>=observedDriverValue(weak)+5&&marketTeamBudget(team,series)>=expectedSalary(free,series,2)*1.15).sort((a,b)=>observedDriverValue(a.weak)-observedDriverValue(b.weak));
-      const option=options[0];if(!option)continue;const seat=observedDriverValue(free)>=observedDriverValue(option.weak)+8?1:2;const salary=expectedSalary(free,series,seat);if(!acceptsOffer(universe,free,option.team,series,seat,salary))continue;
-      moveWithMarket(universe,option.weak,'FREE',null,'Free agent',0,Math.max(1,Math.round((option.weak.contract?.salary||2)*.25)),'Team used the open market to upgrade its line-up');
-      moveWithMarket(universe,free,series,option.team.id,'Race driver',seat,salary,'Signed from free agency as a market opportunity');moved.add(free.id);moves+=1;freeSignings+=1;signed=true;break;
+      const teams=universe.feederTeams?.[series]||[];
+      const options=teams.map((team)=>({team,weak:lowestRaceDriver(universe,team,series)})).filter(({team,weak})=>weak&&driverMarketMerit(universe,free)>=driverMarketMerit(universe,weak)+3&&marketTeamBudget(team,series)>=expectedSalary(free,series,2)*1.05).sort((a,b)=>teamMarketStrength(universe,b.team,series)-teamMarketStrength(universe,a.team,series));
+      const option=options[0];if(!option)continue;const seat=driverMarketMerit(universe,free)>=driverMarketMerit(universe,option.weak)+6?1:2;const salary=expectedSalary(free,series,seat);if(!acceptsOffer(universe,free,option.team,series,seat,salary))continue;
+      signFreeAgentIntoSeries(universe,free,series,option.team,seat,salary,'Signed from free agency as a market opportunity',moved);moves+=1;secondaryFreeSignings+=1;signed=true;break;
     }
     if(signed)continue;
   }
-  if(moves)createStory(universe,{category:'Driver Market',headline:`The ${yearName(nextYear)} market closes with ${moves} recorded driver moves`,dek:`Every move preserves origin, destination, championship, seat hierarchy and salary. Happiness, leadership status, results, sponsor fit and team affordability all influenced the decisions.`,priority:99,subjects:[],round:0});
+
+  // A late elite-recovery pass resolves cascades created *inside* the free-agent
+  // phase. Without this, signing one superstar could release another elite F1
+  // incumbent after the free-agent array had already been built, accidentally
+  // sending a prime driver to FE/WEC simply because he was not revisited.
+  for(let pass=0;pass<4;pass+=1){
+    const lateElite=universe.drivers.filter((driver)=>driver.active&&driver.role==='Free agent'&&driver.lastMarketYear!==nextYear&&!moved.has(driver.id)&&(driver.age+1)>=21&&(driver.age+1)<=34&&currentDriverRating(driver)>=84)
+      .sort((a,b)=>currentDriverRating(b)-currentDriverRating(a)||driverMarketMerit(universe,b)-driverMarketMerit(universe,a));
+    if(!lateElite.length)break;let recovered=0;
+    for(const driver of lateElite){
+      const offer=findF1Offer(universe,driver,{priority:currentDriverRating(driver)>=86,allTeams:true});
+      if(!offer)continue;
+      completeF1Signing(universe,driver,offer,'Recovered immediately after an F1 market cascade rather than losing a prime season outside Formula 1',moved);f1RecruitingTeams.add(offer.team.id);moves+=1;f1Moves+=1;recovered+=1;
+    }
+    if(!recovered)break;
+  }
+
+  // Contract renewals happen after the external market has had its chance. A team
+  // can absolutely keep a star by paying him and offering the right role, but a
+  // renewal can no longer silently immunize an elite driver from all outside bids.
+  renewRemainingDrivers(universe);
+  if(moves)createStory(universe,{category:'Driver Market',headline:`The ${yearName(nextYear)} market closes with ${moves} competitive moves`,dek:`Top teams actively chased visible elite performance, feeder champions were reviewed for promotion, and prime-age stars were protected from unrealistic long spells in free agency or secondary championships.`,priority:99,subjects:[],round:0});
 }
 
 function reviewF1TestSeats(universe){
@@ -1088,7 +1387,7 @@ function reviewF1TestSeats(universe){
     const year=marketYear;
     recordTransfer(universe,test,fromTest,{teamId:team.id,teamName:team.name,series:'F1',seat,role:'Race driver',salary:test.contract.salary},`Pre-season test-driver promotion: current value +${gap.toFixed(1)}`);
     recordTransfer(universe,weak,fromRace,{teamId:team.id,teamName:team.name,series:'F1',seat:3,role:'Test driver',salary:weak.contract?.salary||0},conflict?'Demoted after public conflict with team leadership':'Demoted after pre-season internal performance review');
-    test.lastMarketYear=year;weak.lastMarketYear=year;syncTeamHierarchyAndEngineers(universe,team);
+    test.lastMarketYear=year;weak.lastMarketYear=year;refreshF1RoleLists(universe,team);normalizeF1RaceRoster(universe,team);
     createStory(universe,{category:'Driver Market',headline:conflict?`${weak.name} loses the ${team.name} race seat after an open leadership conflict`:`${test.name} wins a ${team.name} race seat in pre-season`,dek:conflict?`Repeated public criticism became official and the relationship with team leadership broke down. ${test.name} takes the seat despite a current-value gap of ${gap.toFixed(1)}.`:`The test driver graded ${gap.toFixed(1)} points higher on visible current performance than ${weak.name}. The team promotes the stronger option before the season starts.`,priority:84,subjects:[test.id,weak.id,team.id],round:0});
   });
 }
@@ -1125,9 +1424,16 @@ function fillAllSeriesSeats(universe,rng){
       const prospect=driverStandings(universe,'F2').filter((driver)=>driver.lastMarketYear!==universe.year+1&&driver.age>=21).sort((a,b)=>candidateScore(universe,b,team)-candidateScore(universe,a,team))[0];
       const free=universe.drivers.filter((driver)=>driver.active&&driver.role==='Free agent'&&driver.lastMarketYear!==universe.year+1&&driver.age>=21).sort((a,b)=>observedDriverValue(b)-observedDriverValue(a))[0];
       const alternative=universe.drivers.filter((driver)=>driver.active&&driver.lastMarketYear!==universe.year+1&&['FE','WEC'].includes(driver.series)&&driver.role==='Race driver').sort((a,b)=>observedDriverValue(b)-observedDriverValue(a))[0];
-      const candidatePool=[...tests.slice(0,2),prospect,free,alternative].filter(Boolean);
-      const candidate=[...new Map(candidatePool.map((item)=>[item.id,item])).values()]
-        .sort((a,b)=>candidateScore(universe,b,team)-candidateScore(universe,a,team))[0];
+      const bestTest=tests[0]||null;
+      const externalPool=[prospect,free,alternative].filter(Boolean);
+      const bestExternal=[...new Map(externalPool.map((item)=>[item.id,item])).values()]
+        .sort((a,b)=>candidateScore(universe,b,team)-candidateScore(universe,a,team))[0]||null;
+      // A vacated F1 seat is not automatically another transfer. Teams invested in
+      // two test drivers for a reason: if the best reserve is within four current
+      // points of the external option, promote internally. Truly superior F2/free/
+      // FE/WEC candidates still win the seat. This keeps the market active without
+      // needlessly turning half the grid over every winter.
+      const candidate=bestTest&&(!bestExternal||currentDriverRating(bestTest)>=currentDriverRating(bestExternal)-4)?bestTest:bestExternal;
       if(!candidate)break;
       const sourceSeries=candidate.series;const sourceRole=candidate.role;
       const fillSalary=Math.round(observedDriverValue(candidate)**2/355);moveWithMarket(universe,candidate,'F1',team.id,'Race driver',roster.length+1,fillSalary,'Filled an open F1 seat after the market');
@@ -1167,11 +1473,15 @@ function fillAllSeriesSeats(universe,rng){
     universe.feederTeams[series].forEach((team)=>{
       const capacity=rosterCapacity(series);let roster=universe.drivers.filter((driver)=>driver.active&&driver.series===series&&driver.role==='Race driver'&&driver.teamId===team.id);
       while(roster.length<capacity){
-        const free=universe.drivers.filter((driver)=>driver.active&&driver.role==='Free agent'&&driver.lastMarketYear!==universe.year+1).sort((a,b)=>observedDriverValue(b)-observedDriverValue(a))[0];
+        const free=universe.drivers.filter((driver)=>driver.active&&driver.role==='Free agent'&&driver.lastMarketYear!==universe.year+1&&!(driver.age<=32&&currentDriverRating(driver)>=86)).sort((a,b)=>observedDriverValue(b)-observedDriverValue(a))[0];
         if(free){moveWithMarket(universe,free,series,team.id,'Race driver',roster.length+1,expectedSalary(free,series,roster.length+1),'Signed from free agency to fill an open seat');roster.push(free);continue;}
-        const roll=rng.next();const rarity=roll>.9?'Legend':roll>.62?'Epic':roll>.25?'Rare':'Uncommon';
+        // FE/WEC are alternative and late-career destinations, not a second hidden
+        // source of brand-new Verstappen-level talent. New elite prospects enter
+        // through the F4 ladder; these emergency roster fillers are established
+        // specialists, with only a small chance of being Epic and never newly Legend.
+        const arrivalAge=rng.int(27,38);const roll=rng.next();const rarity=roll>.94&&arrivalAge>=31?'Epic':roll>.42?'Rare':'Uncommon';
         const id=`${series.toLowerCase()}-arrival-${universe.year}-${team.id}-${roster.length}-${rng.int(100,999)}`;
-        const arrival=createProceduralDriver({seed:universe.seed+universe.year*17011+idNumber(id),id,series,teamId:team.id,seat:roster.length+1,rarity,age:rng.int(23,35)});
+        const arrival=createProceduralDriver({seed:universe.seed+universe.year*17011+idNumber(id),id,series,teamId:team.id,seat:roster.length+1,rarity,age:arrivalAge});
         universe.drivers.push(arrival);team.driverIds.push(arrival.id);roster.push(arrival);
       }
     });
@@ -1482,6 +1792,8 @@ export function advanceToNextSeason(sourceUniverse){
   const universe=deepClone(sourceUniverse); if(universe.phase!=='Season complete')return universe;
   const completedYear=universe.year;
   universe.drivers.filter((driver)=>driver.role==='Injured').forEach((driver)=>{driver.role='Race driver';driver.injuryUntilRound=null;const cover=universe.drivers.find((candidate)=>candidate.coveringFor===driver.id);if(cover){cover.role='Test driver';cover.coveringFor=null;cover.seat=3;}});
+  settleOpenPerformanceTrials(universe);
+  universe.teams.forEach((team)=>normalizeF1RaceRoster(universe,team));
   const allTeamsBefore=[...universe.teams,...Object.entries(universe.feederTeams||{}).flatMap(([series,teams])=>teams.map((team)=>({...team,series})))];
   const preseasonBefore=new Map(allTeamsBefore.map((team)=>[team.id,{series:team.series||'F1',name:team.name,mainBrandId:team.mainBrandId||null,spending:team.finances?.totalExpenses??team.finances?.expenses??0}]));
   const driverIdsBefore=new Set(universe.drivers.map((driver)=>driver.id));
@@ -1530,6 +1842,7 @@ export function advanceToNextSeason(sourceUniverse){
   addNewProspects(universe,rng);
   fillAllSeriesSeats(universe,rng);
   reviewF1TestSeats(universe);
+  universe.drivers.filter((driver)=>driver.marketOrigin).forEach((driver)=>finalizeMarketRelease(universe,driver));
   universe.year+=1;universe.seasonIndex+=1;
   updateTeamsAndSponsors(universe,rng);updateSupportTeams(universe,rng);updateStaffMarket(universe,rng);updateCalendar(universe,rng);
   [...universe.teams,...Object.values(universe.feederTeams||{}).flat()].forEach((team)=>syncTeamHierarchyAndEngineers(universe,team));

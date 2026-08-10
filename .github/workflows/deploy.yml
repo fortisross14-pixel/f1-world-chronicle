@@ -56,6 +56,9 @@ jobs:
       - name: Run universe v9 personality and rivalry test
         run: npm run universe-v9
 
+      - name: Run 60-offseason market balance stress test
+        run: npm run market-balance
+
       # package.json invokes Vite through Node directly, so the build does not
       # depend on the executable bit of node_modules/.bin/vite.
       - name: Build GitHub Pages bundle

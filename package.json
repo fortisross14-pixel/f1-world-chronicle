@@ -1,7 +1,7 @@
 {
   "name": "f1-world-chronicle",
   "private": true,
-  "version": "1.9.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,8 @@
     "universe-v6": "node scripts/universe-v6.mjs",
     "balance-12": "node scripts/balance-12.mjs",
     "universe-v8": "node scripts/universe-v8.mjs",
-    "universe-v9": "node scripts/universe-v9.mjs"
+    "universe-v9": "node scripts/universe-v9.mjs",
+    "market-balance": "node scripts/market-balance.mjs"
   },
   "dependencies": {
     "react": "^19.1.1",

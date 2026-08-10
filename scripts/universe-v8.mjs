@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createUniverse, getStaff, hydrateUniverse } from '../src/data.js';
+import { createUniverse, getStaff, hydrateUniverse, SCHEMA_VERSION } from '../src/data.js';
 import { advanceToNextSeason, driverStandings, simulateToSeasonEnd } from '../src/sim.js';
 
 const SERIES=['F1','F2','F3','F4','FE','WEC'];
@@ -27,7 +27,7 @@ const f1Standings=new Set(driverStandings(universe,'F1').map((driver)=>driver.id
 for(const id of f1Participants)assert.ok(f1Standings.has(id),`F1 participant ${id} must appear in standings`);
 
 universe=advanceToNextSeason(universe);
-assert.equal(universe.schemaVersion,12);
+assert.equal(universe.schemaVersion,SCHEMA_VERSION);
 const archived=universe.seasonArchive.at(-1);
 for(const series of SERIES){
   const history=archived.series?.[series];

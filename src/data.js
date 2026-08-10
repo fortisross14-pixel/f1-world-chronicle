@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 export const RARITY = {
   Generational: { min: 95, max: 99, color: '#e10600', legacy: 1.28 },
@@ -227,7 +227,14 @@ function createCareerCurve(rng, debutAge, careerLength, peakAge) {
     const noise = (rng.next() - 0.5) * 0.025;
     curve.push(Number(Math.max(0.78, Math.min(1.035, developmental + noise)).toFixed(3)));
   }
-  return curve;
+  // Every career has a real prime. The precise shape can be brief or sustained,
+  // but at least one season reaches 1.000 and exceptional curves can peak a few
+  // percent above it. Rarity controls the talent ceiling, not whether a career
+  // is allowed to have a genuine peak year.
+  const naturalPeak=Math.max(...curve);
+  const targetPeak=Number((1+rng.next()*.035).toFixed(3));
+  const shift=Math.max(0,targetPeak-naturalPeak);
+  return curve.map((value)=>Number(Math.max(.78,Math.min(1.035,value+shift)).toFixed(3)));
 }
 function skillSet(rng, talent, style) {
   // Rarity defines the ceiling, not a flat score in every discipline. Even a
@@ -714,6 +721,16 @@ function defaultLegacyPersonality(driver){
   const seed=[...String(driver.id||driver.name||'driver')].reduce((sum,ch)=>sum+ch.charCodeAt(0),0)+(driver.baseTalent||70)*17;
   return createPersonality(makeRng(seed));
 }
+function ensureCareerHasPrime(curve,driver){
+  const source=[...(curve||[])];
+  if(!source.length)return source;
+  const peak=Math.max(...source);
+  if(peak>=1)return source;
+  // Deterministic migration for older saves: preserve the shape, simply lift the
+  // whole career enough for its strongest year to be a true 1.000 prime.
+  const shift=1-peak;
+  return source.map((value)=>Number(Math.max(.68,Math.min(1.035,value+shift)).toFixed(3)));
+}
 export function hydrateUniverse(input){
   const sourceVersion=input?.schemaVersion||0;
   const universe=structuredClone(input);
@@ -736,9 +753,11 @@ export function hydrateUniverse(input){
       let last=curve.at(-1)??driver.careerMultiplier??.9;
       while(curve.length<minimumLength){last=Math.max(.78,Number((last-.018).toFixed(3)));curve.push(last);}
     }
+    curve=ensureCareerHasPrime(curve,driver);
     const retired=driver.role==='Retired'||driver.active===false;
     const prematureRetirement=sourceVersion<11&&retired&&(driver.age||99)<30;
     return {...driver,contract,careerCurve:curve,careerLength:Math.max(driver.careerLength||curve.length,curve.length),
+      careerMultiplier:curve[Math.max(0,Math.min(curve.length-1,driver.curveIndex||0))]??driver.careerMultiplier??.9,
       active:prematureRetirement?true:driver.active,role:prematureRetirement?'Free agent':driver.role,series:prematureRetirement?'FREE':driver.series,retiredYear:prematureRetirement?null:driver.retiredYear,retirementReason:prematureRetirement?null:driver.retirementReason,
       seat:prematureRetirement?0:(driver.role==='Test driver'||driver.role==='Reserve driver')?3:(driver.seat||1),
       teamId:prematureRetirement?null:(retired?null:driver.teamId),lastTeamId:driver.lastTeamId||(retired?driver.teamId:null),
