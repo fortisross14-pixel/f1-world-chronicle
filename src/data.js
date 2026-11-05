@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 export const RARITY = {
   Generational: { min: 95, max: 99, color: '#e10600', legacy: 1.28 },

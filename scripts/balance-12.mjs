@@ -58,3 +58,22 @@ for (const seed of seeds) {
 }
 
 console.log(JSON.stringify(reports, null, 2));
+
+// README "Long-run competitive balance" targets, checked across the full
+// three-seed run (a single-seed run only prints the report).
+if (reports.length === 3) {
+  const seasons = reports.flatMap((report) => report.seasons);
+  const total = (key) => reports.reduce((sum, report) => sum + report.buckets[key], 0);
+  const mean = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+  const meanWinners = mean(seasons.map((season) => season.winnerCount));
+  const meanTeams = mean(seasons.map((season) => season.winningTeams));
+  const summary = { sixOrSeven: total('sixOrSeven'), eightToTen: total('eightToTen'), aboveTen: total('aboveTen'), belowSix: total('belowSix'), mostTitles: reports.map((report) => report.mostTitles), meanWinners: Number(meanWinners.toFixed(2)), meanWinningTeams: Number(meanTeams.toFixed(2)) };
+  console.log('Balance summary (36 seasons):', summary);
+  assert.ok(summary.sixOrSeven >= 4 && summary.sixOrSeven <= 14, `Seasons with a 6–7 win leader should be roughly 2–4 per era, got ${summary.sixOrSeven}/36`);
+  assert.ok(summary.eightToTen >= 15, `Most seasons should have an 8–10 win leader, got ${summary.eightToTen}/36`);
+  assert.ok(summary.aboveTen >= 2 && summary.aboveTen <= 10, `Exceptional 10+ win seasons should be 1–3 per era, got ${summary.aboveTen}/36`);
+  assert.ok(summary.belowSix <= 4, `Very open seasons should stay rare, got ${summary.belowSix}/36`);
+  assert.ok(reports.every((report) => report.mostTitles >= 2 && report.mostTitles <= 6), 'The leading champion of an era should usually win three to five titles');
+  assert.ok(meanWinners >= 5 && meanWinners <= 8.5, `Seasons should usually have five to eight winners, mean ${meanWinners.toFixed(2)}`);
+  assert.ok(meanTeams >= 4 && meanTeams <= 7, `Seasons should usually have four to seven winning constructors, mean ${meanTeams.toFixed(2)}`);
+}

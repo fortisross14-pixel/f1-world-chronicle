@@ -59,6 +59,9 @@ jobs:
       - name: Run 60-offseason market balance stress test
         run: npm run market-balance
 
+      - name: Run lap-by-lap race replay test
+        run: npm run race-replay
+
       # package.json invokes Vite through Node directly, so the build does not
       # depend on the executable bit of node_modules/.bin/vite.
       - name: Build GitHub Pages bundle

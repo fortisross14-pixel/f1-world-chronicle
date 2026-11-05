@@ -1,4 +1,10 @@
 import { RARITY, MAIN_BRANDS, makeRng, getTeam, getDriver, getStaff, getEngine, getSponsor, getMainBrand, COUNTRIES, createProceduralDriver, currentDriverRating, assignRosterHierarchy, driverHierarchyScore, effectiveDriverSkill } from './data.js';
+import { runLapRace, snapshotPolicy } from './raceEngine.js';
+import { scoreMoments } from './moments.js';
+
+export const REPLAY_VERSION = 1;
+// Phase 3 replaces this with live rivalry heat.
+function rivalryHeatBetween(){return 0;}
 
 export const GRAND_PRIX_POINTS = [25,18,15,12,10,8,6,4,2,1];
 export const SPRINT_POINTS = [8,7,6,5,4,3,2,1];
@@ -202,7 +208,8 @@ function raceWeatherTimeline(event, weather, rng, segments=8) {
     const start=rng.int(2,5); states[start]='Damp'; if(rng.chance(.52)) states[Math.min(segments-1,start+1)]='Wet';
     if(start+2<segments) states[start+2]='Damp';
   }
-  return states;
+  // A late rain window can be drawn past the last segment; keep the timeline exactly segments long.
+  return states.slice(0,segments);
 }
 
 function ensureWeekend(universe,eventIndex) {
@@ -294,128 +301,107 @@ function reliabilityRisk(universe,driver,team,event,rng,isSprint=false,temperatu
   return clamp((101-reliability)/130*(isSprint?.35:1)*(0.7+stress*.5)+thermalStress+(rng.next()-.5)*.015,.004,.22);
 }
 
+function f1StartCompound(driver,gridPosition,track,isSprint,rng){
+  if(track!=='Dry')return tyreForState(track);
+  if(isSprint)return driver.style==='Aggressive attacker'||rng.chance(.7)?'Soft':'Medium';
+  if(driver.style==='Aggressive attacker')return rng.chance(.7)?'Soft':'Medium';
+  if(gridPosition<=10)return rng.chance(.62)?'Medium':'Soft';
+  return rng.chance(.45)?'Hard':'Medium';
+}
+function attackBonusForStyle(style){return style==='Overtaking specialist'?6:style==='Aggressive attacker'||style==='Late braker'?3:0;}
+function defenceBonusForStyle(style){return style==='Defensive specialist'?7:style==='Precision driver'?1.5:0;}
+// Pace effects that are not about overtaking stay in the lap-time model.
+// Overtaking and defensive specialists now act through real passes instead.
+function racePaceStyleModifier(driver,event,gridPosition,weather){
+  if(driver?.style==='Overtaking specialist'||driver?.style==='Defensive specialist')return .15;
+  return raceStyleModifier(driver,event,gridPosition,weather);
+}
+function titleContenders(universe,series){
+  const table=driverStandings(universe,series);const leader=table[0]?.season?.points||0;
+  const calendar=series==='F1'?universe.calendar:(universe.competitionCalendars?.[series]||[]);
+  const done=series==='F1'?(universe.competitionEventResults?.F1?.length||0):(universe.competitionEventResults?.[series]?.length||0);
+  const remaining=Math.max(0,(calendar.length||0)-done);
+  if(leader<=0)return new Set();
+  return new Set(table.slice(0,4).filter((driver)=>leader-(driver.season.points||0)<=remaining*25*.55+8).map((driver)=>driver.id));
+}
+function momentContext(universe,series,laps,timeline){
+  const segments=timeline.length;
+  return{laps,contenders:titleContenders(universe,series),isWetLap:(lap)=>timeline[Math.min(segments-1,Math.floor((Math.max(1,lap)-1)*segments/laps))]!=='Dry',rivalHeat:(a,b)=>rivalryHeatBetween(universe,a,b)};
+}
+function f1LapBase(event){return 84+(event.traits.high+event.traits.low+event.traits.straight)/300*12;}
+
 function simulateRace(universe,event,session,rng,isSprint=false) {
   const lastQual=[...universe.sessionResults].reverse().find((result)=>result.year===universe.year&&result.round===event.round&&((isSprint&&result.sessionKey==='SQ')||(!isSprint&&result.sessionKey==='Q')));
   let grid=lastQual?.data?.grid || currentF1Drivers(universe).sort((a,b)=>b.baseTalent-a.baseTalent).map((driver)=>driver.id);
   const segments=isSprint?4:8;
   const timeline=raceWeatherTimeline(event,session.weather,rng,segments);
   const laps=isSprint?Math.round(22+event.traits.high/8):Math.round(48+event.traits.low/5);
+  const temperature=session.weather.temperature||24;
   const teamWeekendSwing=new Map(universe.teams.map((team)=>{
     const operations=team.car?.operations||75;
     return [team.id,centeredPerformanceSwing(rng,1.55)*(1.25-operations/250)];
   }));
-  const states=grid.map((driverId,index)=>{
+  const contextBefore=momentContext(universe,'F1',laps,timeline);
+  const entrants=grid.map((driverId,index)=>{
     const driver=getDriver(universe,driverId); const team=getTeam(universe,driver.teamId);
     const startSkill=driverLevel(driver,'starts',timeline[0]);
     const startDelta=clamp(Math.round((startSkill-82)/12+(rng.next()-.5)*2),-2,2);
-    const virtualPos=clamp(index+1-startDelta,1,grid.length);
-    const overtaking=event.traits.overtake??60;
-    const burdenPerPlace=.16+(100-overtaking)*.012;
-    const passRecovery=Math.max(0,competitionSkill(driver,'racecraft',.82)-74)*.035*(overtaking/70)*Math.max(0,virtualPos-1);
-    const defensiveHold=virtualPos<=5?Math.max(0,(competitionSkill(driver,'racecraft',.82)+competitionSkill(driver,'composure',.82)-160)/34)*(1-overtaking/135):0;
-    const gridBurden=Math.max(0,(virtualPos-1)*burdenPerPlace-passRecovery-defensiveHold);
-    const raceDayForm=centeredPerformanceSwing(rng,2.15)*(1.22-competitionSkill(driver,'consistency',.8)/280);
-    return {driverId,teamId:team.id,grid:index+1,virtualPos,time:gridBurden,status:'Running',laps,lapsCompleted:laps,tyre:tyreForState(timeline[0],driver.style==='Aggressive attacker'),stints:[],pitStops:0,penalty:0,tags:[],events:[],paceScore:0,raceDayForm,teamWeekendForm:teamWeekendSwing.get(team.id)||0};
-  });
-  const raceEvents=[];
-  let safetyCar=false;
-  let virtualSafetyCar=false;
-  let redFlag=false;
-  const teamOrders=[];
-  states.forEach((state)=>{
-    const driver=getDriver(universe,state.driverId); const team=getTeam(universe,state.teamId);
-    const quality=strategyQuality(universe,driver,team);
-    let previousTyre=state.tyre; let stintStart=1; let totalPerformance=0; let tyreAge=0;
-    for(let segment=0;segment<segments;segment+=1){
-      const track=timeline[segment]; const ideal=tyreForState(track,driver.style==='Aggressive attacker');
-      const lapStart=Math.max(1,Math.round(segment*laps/segments)+1);
-      const lapEnd=Math.min(laps,Math.round((segment+1)*laps/segments));
-      const transition=ideal!==previousTyre;
-      let reactDelay=0;
-      if(transition){
-        const strategyRoll=quality+(rng.next()-.5)*24;
-        reactDelay=strategyRoll<75?1:0;
-        if(reactDelay){state.tags.push('Late tyre call'); state.time+=7.5;}
-        state.stints.push({from:stintStart,to:lapStart-1,compound:previousTyre});
-        state.pitStops+=1; state.time+=(isSprint?17.5:20.5)+(10-(team.facilities.pitCrew||5))*.55+(rng.next()-.5)*1.2;
-        previousTyre=ideal; stintStart=lapStart;
-        if(!reactDelay && track!=='Dry'){state.tags.push('Perfect crossover call');state.time-=2.8;}
-      } else if(track==='Dry' && !isSprint && segment>1 && segment<segments-1 && tyreAge>1 && rng.chance(clamp((88-effectiveDriverSkill(driver,'tyre'))/120+.16,.08,.35))){
-        state.stints.push({from:stintStart,to:lapStart-1,compound:previousTyre}); state.pitStops+=1; state.time+=20.5+(10-(team.facilities.pitCrew||5))*.55; previousTyre=effectiveDriverSkill(driver,'tyre')>86?'Hard':'Medium'; stintStart=lapStart; tyreAge=0;
-      }
-      tyreAge+=1;
-      const fit=carFit(universe,team,event,'race');
-      const pace=fit*.39+driverLevel(driver,'racePace',track)*.285+competitionSkill(driver,'racecraft',.82)*.085+competitionSkill(driver,'tyre',.8)*.055+competitionSkill(driver,'consistency',.8)*.032+competitionSkill(driver,'composure',.8)*.023+driverCircuitSpecialtyScore(driver,event,track)*1.4+thermalDriverScore(driver,session.weather.temperature)*1.05+state.raceDayForm+state.teamWeekendForm+raceEngineerBoost(universe,driver)+raceStyleModifier(driver,event,state.grid,track)+recentWinPressure(universe,driver.id);
-      let tyrePenalty=0;
-      if((track==='Wet'&&previousTyre!=='Wet')||(track==='Damp'&&!['Intermediate','Wet'].includes(previousTyre))) tyrePenalty=12;
-      if(track==='Dry'&&['Intermediate','Wet'].includes(previousTyre)) tyrePenalty=7;
-      const heatLoad=Math.max(0,(session.weather.temperature||24)-30)*.055;
-      const degradation=Math.max(0,((event.traits.tyre-effectiveDriverSkill(driver,'tyre'))*.035+heatLoad)*tyreAge);
-      const traffic=(state.virtualPos>8?event.traits.overtake<55?1.4:.4:0);
-      const variability=(rng.next()-.5)*(12-effectiveDriverSkill(driver,'consistency')/15);
-      totalPerformance+=pace-tyrePenalty-degradation-traffic+variability;
-      state.time+=(lapEnd-lapStart+1)*(96-(pace-70)*.24)+tyrePenalty+degradation;
-      if(state.status==='Running' && rng.chance(reliabilityRisk(universe,driver,team,event,rng,isSprint,session.weather.temperature)/segments)){
-        state.status='DNF'; state.lapsCompleted=Math.max(2,lapEnd-rng.int(1,4)); state.tags.push('Mechanical DNF');
-        const reason=rng.pick(['power unit failure','hydraulic failure','gearbox failure','electrical shutdown','overheating']);
-        state.events.push({lap:state.lapsCompleted,type:'Retirement',text:`${driver.name} retires with ${reason}`}); raceEvents.push(state.events.at(-1));
-      }
-      const incidentChance=clamp((94-effectiveDriverSkill(driver,'consistency'))/1100+(driver.style==='Aggressive attacker'?.006:0)+(track!=='Dry'?.008:0),.001,.026);
-      if(state.status==='Running' && rng.chance(incidentChance)){
-        if(rng.chance(.28)){
-          state.status='DNF'; state.lapsCompleted=lapEnd; state.tags.push('Crash DNF');
-          state.events.push({lap:lapEnd,type:'Incident',text:`${driver.name} crashes out in ${track.toLowerCase()} conditions`}); raceEvents.push(state.events.at(-1)); safetyCar=true;
-        } else {
-          state.time+=rng.int(8,24); state.tags.push('Costly mistake');
-          state.events.push({lap:lapEnd,type:'Mistake',text:`${driver.name} loses time after a driving error`}); raceEvents.push(state.events.at(-1));
-        }
-      }
-      if(state.status==='Running' && rng.chance(.006)){
-        state.penalty+=5; state.tags.push('Five-second penalty');
-        state.events.push({lap:lapEnd,type:'Penalty',text:`${driver.name} receives a five-second penalty`}); raceEvents.push(state.events.at(-1));
-      }
-      if(state.status!=='Running') break;
-    }
-    if(state.status==='Running') state.stints.push({from:stintStart,to:laps,compound:previousTyre});
-    state.tyre=previousTyre; state.paceScore=totalPerformance/segments; state.time+=state.penalty;
+    const raceDayForm=centeredPerformanceSwing(rng,2.85)*(1.22-competitionSkill(driver,'consistency',.8)/280);
+    const fit=carFit(universe,team,event,'race');
+    const common=fit*.39+competitionSkill(driver,'racecraft',.82)*.085+competitionSkill(driver,'tyre',.8)*.055+competitionSkill(driver,'consistency',.8)*.032+competitionSkill(driver,'composure',.8)*.023+thermalDriverScore(driver,temperature)*1.05+raceDayForm+(teamWeekendSwing.get(team.id)||0)+raceEngineerBoost(universe,driver)+recentWinPressure(universe,driver.id);
+    const byState={};
+    const pace=timeline.map((track)=>byState[track]??=common+driverLevel(driver,'racePace',track)*.285+driverCircuitSpecialtyScore(driver,event,track)*1.4+racePaceStyleModifier(driver,event,index+1,track));
+    const consistency=effectiveDriverSkill(driver,'consistency');
+    const racecraft=competitionSkill(driver,'racecraft',.82);
+    return{
+      id:driver.id,name:driver.name,teamId:team.id,grid:index+1,pace,
+      noiseAmp:clamp(1.05-consistency/120,.18,.55),racecraft,defence:racecraft*.6+competitionSkill(driver,'composure',.82)*.4,
+      composure:effectiveDriverSkill(driver,'composure'),tyreSkill:effectiveDriverSkill(driver,'tyre'),startDelta,
+      strategy:strategyQuality(universe,driver,team),pitCrew:team.facilities?.pitCrew??5,
+      reliabilityRisk:reliabilityRisk(universe,driver,team,event,rng,isSprint,temperature),
+      incidentBase:clamp((94-consistency)/1100+(driver.style==='Aggressive attacker'?.006:0),.001,.026),
+      aggressive:driver.style==='Aggressive attacker',startCompound:f1StartCompound(driver,index+1,timeline[0],isSprint,rng),
+      attackBonus:attackBonusForStyle(driver.style),defenceBonus:defenceBonusForStyle(driver.style),
+    };
   });
   // Late-race team orders are possible, but only when a clear title priority exists.
-  if(!isSprint && event.round>Math.round(universe.calendar.length*.55)){
+  const teamOrderLap=!isSprint&&event.round>Math.round(universe.calendar.length*.55)?Math.max(2,laps-rng.int(3,10)):null;
+  const teamOrderPlan=(order,orderRng)=>{
+    const swaps=[];
     universe.teams.forEach((team)=>{
-      const pair=states.filter((state)=>state.teamId===team.id&&state.status==='Running');
+      const pair=order.filter((item)=>item.teamId===team.id);
       if(pair.length!==2)return;
-      const [a,b]=pair; const da=getDriver(universe,a.driverId); const db=getDriver(universe,b.driverId);
+      const [ahead,behind]=pair;const da=getDriver(universe,ahead.driverId);const db=getDriver(universe,behind.driverId);
       const leadDriver=da.seat===1?da:db.seat===1?db:null;
-      const leadState=leadDriver?.id===da.id?a:leadDriver?.id===db.id?b:null;
       const sportingPriority=leadDriver&&Math.max(da.season.points,db.season.points)-leadDriver.season.points<28;
-      const contender=sportingPriority?{state:leadState,driver:leadDriver,other:leadState===a?b:a,otherDriver:leadState===a?db:da}:(da.season.points>=db.season.points?{state:a,driver:da,other:b,otherDriver:db}:{state:b,driver:db,other:a,otherDriver:da});
-      const gap=contender.state.time-contender.other.time;
-      const principal=team.staffIds.map((id)=>getStaff(universe,id)).find((member)=>member?.role==='Team Principal');
+      const contender=sportingPriority?leadDriver:(da.season.points>=db.season.points?da:db);
+      const other=contender.id===da.id?db:da;
+      if(contender.id!==db.id)return;
+      const gap=behind.cum-ahead.cum;
+      const principal=teamPrincipal(universe,team);
       const orderChance=clamp(.38+(principal?.rating||75)/250+(team.finances.pressure||40)/300,.45,.9);
-      if(gap>0&&gap<6&&(contender.driver.seat===1||contender.driver.season.points-contender.otherDriver.season.points>=15)&&rng.chance(orderChance)){
-        const previous=contender.other.time; contender.state.time=previous-.15; contender.other.time+=1.25;
-        contender.state.tags.push('Team-order priority'); contender.other.tags.push('Team order obeyed');
-        const order={lap:Math.max(1,laps-rng.int(3,10)),type:'Team Order',text:`${team.name} asks ${contender.otherDriver.name} to release title contender ${contender.driver.name}`};
-        raceEvents.push(order);teamOrders.push(order);
+      if(gap>0&&gap<4&&(contender.seat===1||contender.season.points-other.season.points>=15)&&orderRng.chance(orderChance)){
+        swaps.push({leadId:contender.id,otherId:other.id,text:`${team.name} asks ${other.name} to release title contender ${contender.name}`});
       }
     });
-  }
-  if(safetyCar){
-    const lap=rng.int(Math.round(laps*.25),Math.round(laps*.8));
-    raceEvents.push({lap,type:'Safety Car',text:'The Safety Car compresses the field and reshapes the pit window'});
-    states.filter((state)=>state.status==='Running').forEach((state)=>{state.time-=Math.min(18,Math.max(0,state.time%21)); if(rng.chance(.18))state.tags.push('Safety-car beneficiary');});
-    redFlag=!isSprint&&timeline.some((state)=>state==='Wet')&&rng.chance(.16);
-    if(redFlag){
-      const redLap=Math.min(laps-2,lap+rng.int(1,4));raceEvents.push({lap:redLap,type:'Red Flag',text:'The race is stopped in dangerous conditions; the field restarts on freely chosen tyres'});
-      states.filter((state)=>state.status==='Running').forEach((state)=>{state.time-=Math.min(9,Math.max(0,state.time%12));state.tags.push('Red-flag restart');});
-    }
-  } else if(raceEvents.some((eventItem)=>['Retirement','Mistake'].includes(eventItem.type))&&rng.chance(.32)){
-    virtualSafetyCar=true;const lap=rng.int(Math.round(laps*.2),Math.round(laps*.85));raceEvents.push({lap,type:'Virtual Safety Car',text:'A Virtual Safety Car neutralizes the pace and opens a cheaper pit-stop window'});
-    states.filter((state)=>state.status==='Running').forEach((state)=>{if(state.pitStops>0&&rng.chance(.22)){state.time-=5.5;state.tags.push('VSC pit-stop gain');}});
-  }
-  const running=states.filter((state)=>state.status==='Running').sort((a,b)=>a.time-b.time);
-  const retired=states.filter((state)=>state.status!=='Running').sort((a,b)=>b.lapsCompleted-a.lapsCompleted||a.time-b.time);
-  const sorted=[...running,...retired]; const leaderTime=running[0]?.time||sorted[0]?.time||0;
+    return swaps;
+  };
+  const race=runLapRace({
+    entrants,laps,timeline,rng,traits:event.traits,lapBase:f1LapBase(event),isSprint,temperature,
+    mandatoryStop:!isSprint,allowDryStops:!isSprint,pitLossBase:isSprint?17.5:20.5,
+    snapshotEvery:snapshotPolicy(laps),teamOrderLap,teamOrders:teamOrderPlan,maxMoments:isSprint?80:150,
+  });
+  const sorted=race.classification.map((state)=>({
+    driverId:state.id,teamId:state.teamId,grid:state.grid,time:state.cum,status:state.status,laps,
+    lapsCompleted:state.status==='Running'?laps:state.lapsDone,tyre:state.compound,stints:state.stints,pitStops:state.pits,
+    penalty:state.penalty,tags:[...new Set(state.tags)],events:state.events,paceScore:state.paceLaps?state.paceSum/state.paceLaps:0,
+    overtakes:state.overtakes,bestLap:Number.isFinite(state.best)?Number(state.best.toFixed(3)):null,
+  }));
+  const raceEvents=race.events;
+  const {safetyCar,virtualSafetyCar,redFlag}=race.flags;
+  const teamOrders=raceEvents.filter((item)=>item.type==='Team Order');
+  const running=sorted.filter((state)=>state.status==='Running');
+  const leaderTime=running[0]?.time||sorted[0]?.time||0;
   sorted.forEach((state,index)=>{
     state.position=index+1; state.basePoints=state.status==='Running'?((isSprint?SPRINT_POINTS:GRAND_PRIX_POINTS)[index]||0):0; state.bonusPoints=0; state.points=state.basePoints;
     state.gap=index===0?seconds(leaderTime):state.status==='Running'?`+${(state.time-leaderTime).toFixed(3)}s`:`DNF (${state.lapsCompleted} laps)`;
@@ -432,8 +418,8 @@ function simulateRace(universe,event,session,rng,isSprint=false) {
   const winner=getDriver(universe,sorted[0].driverId);
   const winnerTeam=getTeam(universe,winner.teamId);
   if(!isSprint&&winnerTeam){winnerTeam.staffIds.map((id)=>getStaff(universe,id)).filter(Boolean).forEach((member)=>{member.wins=(member.wins||0)+1;});}
-  const fastest=[...sorted].filter((state)=>state.status==='Running').sort((a,b)=>b.paceScore-a.paceScore)[0];
-  const fastestLapTime=fastest?Number(Math.max(45,lapTimeFromScore(fastest.paceScore+5,event,'Race',rng)-2.4).toFixed(3)):null;
+  const fastest=race.fastest?sorted.find((state)=>state.driverId===race.fastest.driverId):null;
+  const fastestLapTime=fastest?Number(race.fastest.time.toFixed(3)):null;
   if(!isSprint&&fastest){
     universe.records.fastestLaps.unshift({year:universe.year,series:'F1',round:event.round,eventId:event.id,circuitId:event.circuitId||event.id,driverId:fastest.driverId,driverName:getDriver(universe,fastest.driverId).name,time:fastestLapTime});universe.records.fastestLaps=universe.records.fastestLaps.slice(0,240);
     if(universe.rules?.fastestLapPoint&&fastest.position<=10){
@@ -451,7 +437,9 @@ function simulateRace(universe,event,session,rng,isSprint=false) {
   const biggestGain=[...sorted].sort((a,b)=>(b.grid-b.position)-(a.grid-a.position))[0];
   if(biggestGain && biggestGain.grid-biggestGain.position>=6) biggestGain.tags.push('Comeback drive');
   const weatherChanged=new Set(timeline).size>1;
-  return {kind:isSprint?'Sprint':'Race',rows:sorted,grid,timeline,laps,safetyCar,virtualSafetyCar,redFlag,teamOrders,fastestLapDriverId:fastest?.driverId||null,fastestLapTime,events:raceEvents.sort((a,b)=>a.lap-b.lap).slice(0,20),headline:`${winner.name} wins ${isSprint?'the Sprint':`the ${event.country} Grand Prix`}${weatherChanged?' after changing conditions':''}`,winnerId:winner.id};
+  scoreMoments(race.moments,contextBefore);
+  return {kind:isSprint?'Sprint':'Race',rows:sorted,grid,timeline,laps,safetyCar,virtualSafetyCar,redFlag,teamOrders,fastestLapDriverId:fastest?.driverId||null,fastestLapTime,events:raceEvents.slice(0,24),headline:`${winner.name} wins ${isSprint?'the Sprint':`the ${event.country} Grand Prix`}${weatherChanged?' after changing conditions':''}`,winnerId:winner.id,
+    replayVersion:REPLAY_VERSION,snapshots:race.snapshots,moments:race.moments,overtakes:race.overtakes,failedAttacks:race.failedAttacks,contacts:race.contacts};
 }
 
 function createStory(universe,{category,headline,dek,priority=70,subjects=[],thread=null,round=null}){
@@ -585,15 +573,46 @@ function supportQualifyingRound(universe,event,drivers,teams,weather,rng,key,cut
   const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const score=genericTeamFit(team,event)*.43+driverLevel(driver,'oneLap',weather.state)*.42+effectiveDriverSkill(driver,'composure')*.05+driverCircuitSpecialtyScore(driver,event,weather.state)*1.25+thermalDriverScore(driver,weather.temperature)*.65+raceEngineerBoost(universe,driver)+principalOversight(universe,team)+(rng.next()-.5)*5.4;return{driverId:driver.id,teamId:driver.teamId,time:lapTimeFromScore(score,event,'Qualifying',rng),points:0};}).sort((a,b)=>a.time-b.time);
   formatSessionRows(rows);rows.forEach((row,index)=>{row.advanced=index<cut;});return{key,label:key,weather:weather.state,temperature:weather.temperature,thermal:weather.thermal,rows};
 }
+const SUPPORT_LAP_OFFSET={F2:5,F3:8,F4:12,FE:11,WEC:7};
 function simulateSupportRace(universe,series,event,drivers,teams,grid,weather,rng){
-  const points=GRAND_PRIX_POINTS;const laps=series==='WEC'?Math.round(90+event.traits.high/2):Math.round(34+event.traits.low/4);
-  const timeline=raceWeatherTimeline(event,weather,rng,series==='WEC'?10:7);
-  const rows=drivers.map((driver)=>{const team=teams.find((item)=>item.id===driver.teamId);const gridPos=Math.max(1,grid.indexOf(driver.id)+1);const specialty=avg(timeline.map((state)=>driverCircuitSpecialtyScore(driver,event,state)));const pace=genericTeamFit(team,event)*.39+driverLevel(driver,'racePace',timeline.some((s)=>s==='Wet')?'Wet':timeline.some((s)=>s==='Damp')?'Damp':'Dry')*.37+effectiveDriverSkill(driver,'racecraft')*.10+effectiveDriverSkill(driver,'tyre')*.06+specialty*1.25+thermalDriverScore(driver,weather.temperature)*1.05+raceEngineerBoost(universe,driver)+principalOversight(universe,team)+((teamStaffRating(universe,team,'Strategy Head')-75)*.018)+(rng.next()-.5)*8;const reliability=team?.carProfile?.reliability||team?.rating||72;const dnf=rng.chance(clamp((94-reliability)/230+(95-effectiveDriverSkill(driver,'consistency'))/600+(timeline.includes('Wet')?.025:0)+Math.max(0,weather.temperature-33)*.008,.01,.21));const raceTime=laps*(96-(pace-70)*.22)+(gridPos-1)*.12+(rng.next()-.5)*12;return{driverId:driver.id,teamId:driver.teamId,grid:gridPos,score:pace,time:raceTime,status:dnf?'DNF':'Running',lapsCompleted:dnf?Math.max(3,laps-rng.int(2,18)):laps,points:0};});
-  const running=rows.filter((row)=>row.status==='Running').sort((a,b)=>a.time-b.time);const retired=rows.filter((row)=>row.status!=='Running').sort((a,b)=>b.lapsCompleted-a.lapsCompleted);const ordered=[...running,...retired];const leader=running[0]?.time||ordered[0]?.time||0;
-  ordered.forEach((row,index)=>{row.position=index+1;row.points=row.status==='Running'?(points[index]||0):0;row.gap=index===0?seconds(leader):row.status==='Running'?`+${(row.time-leader).toFixed(3)}s`:`DNF (${row.lapsCompleted} laps)`;const driver=getDriver(universe,row.driverId);driver.season.points+=row.points;driver.season.wins+=index===0?1:0;driver.season.podiums+=index<3?1:0;driver.season.starts+=1;driver.season.dnfs+=row.status!=='Running'?1:0;driver.season.form.push(index+1);driver.season.form=driver.season.form.slice(-5);driver.confidence=clamp(driver.confidence+(index<3?2:index>15?-1:0),30,96);const team=teams.find((item)=>item.id===row.teamId);if(team){team.points=(team.points||0)+row.points;team.wins=(team.wins||0)+(index===0?1:0);team.season=team.season||{points:0,wins:0,poles:0,podiums:0};team.season.points=(team.season.points||0)+row.points;team.season.wins=(team.season.wins||0)+(index===0?1:0);team.season.podiums=(team.season.podiums||0)+(index<3?1:0);}});
-  const fastest=[...running].sort((a,b)=>b.score-a.score)[0];const fastestLapTime=fastest?Number(Math.max(45,lapTimeFromScore(fastest.score+4,event,'Race',rng)-1.8).toFixed(3)):null;
+  const points=GRAND_PRIX_POINTS;const wec=series==='WEC';
+  const laps=wec?Math.round(90+event.traits.high/2):Math.round(34+event.traits.low/4);
+  const timeline=raceWeatherTimeline(event,weather,rng,wec?10:7);
+  // WEC runs in six-lap stints rather than single laps.
+  const stepLaps=wec?6:1;const steps=Math.max(8,Math.round(laps/stepLaps));
+  const ordered=[...drivers].sort((a,b)=>(grid.indexOf(a.id)+1||99)-(grid.indexOf(b.id)+1||99));
+  const contextBefore=momentContext(universe,series,steps*stepLaps,timeline);
+  const entrants=ordered.map((driver,index)=>{
+    const team=teams.find((item)=>item.id===driver.teamId);const gridPos=Math.max(1,grid.indexOf(driver.id)+1)||index+1;
+    const common=genericTeamFit(team,event)*.39+effectiveDriverSkill(driver,'racecraft')*.10+effectiveDriverSkill(driver,'tyre')*.06+thermalDriverScore(driver,weather.temperature)*1.05+raceEngineerBoost(universe,driver)+principalOversight(universe,team)+((teamStaffRating(universe,team,'Strategy Head')-75)*.018)+(rng.next()-.5)*8;
+    const byState={};
+    const pace=timeline.map((state)=>byState[state]??=common+driverLevel(driver,'racePace',state)*.37+driverCircuitSpecialtyScore(driver,event,state)*1.25);
+    const reliability=team?.carProfile?.reliability||team?.rating||72;
+    const dnfRisk=clamp((94-reliability)/230+(95-effectiveDriverSkill(driver,'consistency'))/600+(timeline.includes('Wet')?.025:0)+Math.max(0,weather.temperature-33)*.008,.01,.21);
+    const consistency=effectiveDriverSkill(driver,'consistency');const racecraft=competitionSkill(driver,'racecraft',.82);
+    const startSkill=driverLevel(driver,'starts',timeline[0]);
+    return{
+      id:driver.id,name:driver.name,teamId:driver.teamId,grid:gridPos,pace,noiseAmp:clamp(1.1-consistency/120,.2,.6),
+      racecraft,defence:racecraft*.6+competitionSkill(driver,'composure',.82)*.4,composure:effectiveDriverSkill(driver,'composure'),
+      tyreSkill:effectiveDriverSkill(driver,'tyre'),startDelta:clamp(Math.round((startSkill-80)/12+(rng.next()-.5)*2),-2,2),
+      strategy:teamStaffRating(universe,team,'Strategy Head'),pitCrew:team?.facilities?.pitCrew??5,
+      reliabilityRisk:dnfRisk*.8,incidentBase:.0015,aggressive:driver.style==='Aggressive attacker',
+      startCompound:timeline[0]!=='Dry'?tyreForState(timeline[0]):'Medium',attackBonus:attackBonusForStyle(driver.style),defenceBonus:defenceBonusForStyle(driver.style),
+    };
+  });
+  const race=runLapRace({
+    entrants,laps:steps,timeline,rng,traits:event.traits,lapBase:f1LapBase(event)+(SUPPORT_LAP_OFFSET[series]||6),paceScale:.14,
+    temperature:weather.temperature,mandatoryStop:false,allowDryStops:series==='F2'||series==='F3',pitLossBase:wec?32:21,stepLaps,
+    snapshotEvery:wec?()=>true:(lap)=>lap<=3||lap>steps-3||lap%3===0,redFlagAllowed:!wec,maxMoments:60,
+  });
+  const rows=race.classification.map((state)=>({driverId:state.id,teamId:state.teamId,grid:state.grid,score:state.paceLaps?state.paceSum/state.paceLaps:0,time:state.cum,status:state.status,lapsCompleted:state.status==='Running'?laps:Math.min(laps,Math.max(3,state.lapsDone)),pitStops:state.pits,stints:state.stints,overtakes:state.overtakes,points:0}));
+  const running=rows.filter((row)=>row.status==='Running');const leader=running[0]?.time||rows[0]?.time||0;
+  rows.forEach((row,index)=>{row.position=index+1;row.points=row.status==='Running'?(points[index]||0):0;row.gap=index===0?seconds(leader):row.status==='Running'?`+${(row.time-leader).toFixed(3)}s`:`DNF (${row.lapsCompleted} laps)`;const driver=getDriver(universe,row.driverId);driver.season.points+=row.points;driver.season.wins+=index===0?1:0;driver.season.podiums+=index<3?1:0;driver.season.starts+=1;driver.season.dnfs+=row.status!=='Running'?1:0;driver.season.form.push(index+1);driver.season.form=driver.season.form.slice(-5);driver.confidence=clamp(driver.confidence+(index<3?2:index>15?-1:0),30,96);const team=teams.find((item)=>item.id===row.teamId);if(team){team.points=(team.points||0)+row.points;team.wins=(team.wins||0)+(index===0?1:0);team.season=team.season||{points:0,wins:0,poles:0,podiums:0};team.season.points=(team.season.points||0)+row.points;team.season.wins=(team.season.wins||0)+(index===0?1:0);team.season.podiums=(team.season.podiums||0)+(index<3?1:0);}});
+  const fastest=race.fastest?rows.find((row)=>row.driverId===race.fastest.driverId):null;const fastestLapTime=fastest?Number(race.fastest.time.toFixed(3)):null;
   if(fastest){universe.records.fastestLaps.unshift({year:universe.year,series,round:event.round,eventId:event.id,circuitId:event.circuitId||event.id,driverId:fastest.driverId,driverName:getDriver(universe,fastest.driverId)?.name,time:fastestLapTime});universe.records.fastestLaps=universe.records.fastestLaps.slice(0,240);}
-  return{key:'R',label:series==='WEC'?'Endurance Race':'Race',weather:weather.state,temperature:weather.temperature,thermal:weather.thermal,timeline,laps,rows:ordered,winnerId:ordered[0]?.driverId,fastestLapDriverId:fastest?.driverId||null,fastestLapTime};
+  scoreMoments(race.moments,contextBefore);
+  return{key:'R',label:wec?'Endurance Race':'Race',weather:weather.state,temperature:weather.temperature,thermal:weather.thermal,timeline,laps,rows,winnerId:rows[0]?.driverId,fastestLapDriverId:fastest?.driverId||null,fastestLapTime,
+    safetyCar:race.flags.safetyCar,virtualSafetyCar:race.flags.virtualSafetyCar,redFlag:race.flags.redFlag,replayVersion:REPLAY_VERSION,stepLaps,snapshots:race.snapshots,moments:race.moments,overtakes:race.overtakes};
 }
 function simulateFeederRound(universe,series,seed){
   const results=universe.competitionEventResults?.[series]||[];const calendar=universe.competitionCalendars?.[series]||[];const event=calendar[results.length];if(!event)return null;
@@ -612,6 +631,18 @@ function simulateFeederRound(universe,series,seed){
   return record;
 }
 
+// Archived events keep their classification but drop lap-by-lap replay data,
+// which is only kept for the current season. A few key moments survive.
+export function archiveEventRecord(record){
+  const copy=deepClone(record);
+  Object.values(copy.sessions||{}).forEach((session)=>{
+    if(session.moments)session.keyMoments=[...session.moments].sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,6);
+    delete session.snapshots;delete session.moments;
+  });
+  return copy;
+}
+export function hasReplay(raceData){return Boolean(raceData?.snapshots?.length>1&&raceData?.moments);}
+
 function buildF1EventRecord(universe,event,raceResult){
   const all=universe.sessionResults.filter((result)=>result.year===universe.year&&result.eventId===event.id);
   const byKey=Object.fromEntries(all.map((result)=>[result.sessionKey,result]));
@@ -629,7 +660,7 @@ function buildF1EventRecord(universe,event,raceResult){
     sessions.SQ2=session('SQ2','Sprint Qualifying 2',byKey.SQ.data?.rounds?.Q2,byKey.SQ.weather);
     sessions.SQ3=session('SQ3','Sprint Qualifying 3',byKey.SQ.data?.rounds?.Q3,byKey.SQ.weather);
   }
-  if(byKey.S)sessions.S=session('S','Sprint',byKey.S.data?.rows,byKey.S.weather,{timeline:byKey.S.data?.timeline,laps:byKey.S.data?.laps});
+  if(byKey.S)sessions.S=session('S','Sprint',byKey.S.data?.rows,byKey.S.weather,{timeline:byKey.S.data?.timeline,laps:byKey.S.data?.laps,replayVersion:byKey.S.data?.replayVersion,snapshots:byKey.S.data?.snapshots,moments:byKey.S.data?.moments,overtakes:byKey.S.data?.overtakes});
   if(byKey.Q){
     sessions.Q1=session('Q1','Q1',byKey.Q.data?.rounds?.Q1,byKey.Q.weather);
     sessions.Q2=session('Q2','Q2',byKey.Q.data?.rounds?.Q2,byKey.Q.weather);
@@ -639,7 +670,7 @@ function buildF1EventRecord(universe,event,raceResult){
     sessions.Q2=session('Q2','Q2',byKey.SQ.data?.rounds?.Q2,byKey.SQ.weather);
     sessions.Q3=session('Q3','Q3',byKey.SQ.data?.rounds?.Q3,byKey.SQ.weather);
   }
-  sessions.R=session('R','Grand Prix',race.rows,byKey.R?.weather,{timeline:race.timeline,laps:race.laps});
+  sessions.R=session('R','Grand Prix',race.rows,byKey.R?.weather,{timeline:race.timeline,laps:race.laps,replayVersion:race.replayVersion,snapshots:race.snapshots,moments:race.moments,overtakes:race.overtakes,safetyCar:race.safetyCar,virtualSafetyCar:race.virtualSafetyCar,redFlag:race.redFlag});
   return{
     id:`${universe.year}-F1-${event.round}`,year:universe.year,series:'F1',eventId:event.id,circuitId:event.circuitId||event.id,round:event.round,
     event:{id:event.id,circuitId:event.circuitId||event.id,country:event.country,city:event.city,name:event.name,traits:event.traits,rain:event.rain,temp:event.temp},
@@ -830,16 +861,70 @@ function simulateWorldWeekMutable(universe,week){
   }else if(universe.phase!=='Season complete')universe.phase='In season';
   return universe;
 }
-export function simulateWeeks(sourceUniverse,weeks=1){
+// ---- Showcase gate: chosen F1 races wait to be watched.
+export const SHOWCASE_DEFAULTS={deciders:true,wet:false,classics:false,all:false};
+export function showcaseSettings(universe){return{...SHOWCASE_DEFAULTS,...(universe?.settings?.showcase||{})};}
+// The race-day forecast, drawn exactly as ensureWeekend will draw it.
+export function raceForecast(universe,event){
+  const race=event.sessions?.find((session)=>session.key==='R');if(race?.weather)return race.weather;
+  const rng=makeRng(event.weekendSeed+universe.year*13);
+  const template=event.sprint?SESSION_TEMPLATES.sprint:SESSION_TEMPLATES.standard;
+  let weather=null;template.forEach((session)=>{const drawn=weatherForSession(event,session.key,rng);if(session.key==='R')weather=drawn;});
+  return weather;
+}
+function eventPointsAvailable(universe,event){return 25+(event.sprint?8:0)+(universe.rules?.fastestLapPoint?1:0);}
+// A decider is a race after which the title can be settled.
+export function isTitleDecider(universe,event){
+  const table=driverStandings(universe,'F1');if(table.length<2)return false;
+  const lead=(table[0].season.points||0)-(table[1].season.points||0);
+  const index=universe.calendar.findIndex((item)=>item.id===event.id);if(index<0)return false;
+  const thisRace=eventPointsAvailable(universe,event);
+  const after=universe.calendar.slice(index+1).reduce((sum,item)=>sum+eventPointsAvailable(universe,item),0);
+  if(lead>thisRace+after)return false;
+  return lead+thisRace>after;
+}
+export function showcaseReason(universe,event){
+  if(!event||event.status==='Complete')return null;
+  const settings=showcaseSettings(universe);
+  if(settings.all)return'Every Formula 1 race';
+  if(settings.deciders&&isTitleDecider(universe,event))return'Title decider';
+  if(settings.wet&&((raceForecast(universe,event)?.forecastChance||0)>=40))return'Wet-weather forecast';
+  if(settings.classics&&event.class==='Protected classic')return'Protected classic';
+  return null;
+}
+function nextF1Event(universe){return universe.currentRound<universe.calendar.length?universe.calendar[universe.currentRound]:null;}
+// Returns the pending showcase race if the coming week contains one.
+function showcaseBlocking(universe,week){
+  const event=nextF1Event(universe);
+  if(!event||event.status==='Complete'||(event.week||event.round*2)>week)return null;
+  const reason=showcaseReason(universe,event);
+  return reason?{year:universe.year,round:event.round,eventId:event.id,name:event.name,country:event.country,week:event.week||event.round*2,reason}:null;
+}
+
+// options.showcase: stop before the week of an unwatched showcase race.
+export function simulateWeeks(sourceUniverse,weeks=1,options={}){
   let universe=deepClone(sourceUniverse);
   if(universe.phase==='Season complete')return universe;
+  universe.showcase=null;
   const target=Math.min(52,(universe.currentWeek||1)+Math.max(1,weeks));
-  for(let week=(universe.currentWeek||1)+1;week<=target;week+=1)universe=simulateWorldWeekMutable(universe,week);
+  for(let week=(universe.currentWeek||1)+1;week<=target;week+=1){
+    if(options.showcase){const pending=showcaseBlocking(universe,week);if(pending){universe.showcase={pending};break;}}
+    universe=simulateWorldWeekMutable(universe,week);
+  }
   return universe;
 }
-export function simulateToSeasonEnd(sourceUniverse){
-  let universe=deepClone(sourceUniverse);let guard=0;
-  while(universe.phase!=='Season complete'&&guard<54){universe=simulateWorldWeekMutable(universe,Math.min(52,(universe.currentWeek||1)+1));guard+=1;if((universe.currentWeek||1)>=52&&!allSeriesComplete(universe)){['F1','F2','F3','F4','FE','WEC'].forEach((series)=>{const calendar=universe.competitionCalendars?.[series]||[];calendar.filter((event)=>event.status!=='Complete').forEach((event)=>{if(series==='F1'&&universe.currentRound<universe.calendar.length)universe=simulateWeekend(universe);else if(series!=='F1')simulateFeederRound(universe,series,event.weekendSeed+universe.year+guard);});});if(allSeriesComplete(universe)){universe.phase='Season complete';finalizeSeasonAwards(universe);}}}
+export function simulateToSeasonEnd(sourceUniverse,options={}){
+  let universe=deepClone(sourceUniverse);let guard=0;universe.showcase=null;
+  while(universe.phase!=='Season complete'&&guard<54){
+    if(options.showcase){const pending=showcaseBlocking(universe,Math.min(52,(universe.currentWeek||1)+1));if(pending){universe.showcase={pending};return universe;}}
+    universe=simulateWorldWeekMutable(universe,Math.min(52,(universe.currentWeek||1)+1));guard+=1;if((universe.currentWeek||1)>=52&&!allSeriesComplete(universe)){['F1','F2','F3','F4','FE','WEC'].forEach((series)=>{const calendar=universe.competitionCalendars?.[series]||[];calendar.filter((event)=>event.status!=='Complete').forEach((event)=>{if(series==='F1'&&universe.currentRound<universe.calendar.length)universe=simulateWeekend(universe);else if(series!=='F1')simulateFeederRound(universe,series,event.weekendSeed+universe.year+guard);});});if(allSeriesComplete(universe)){universe.phase='Season complete';finalizeSeasonAwards(universe);}}}
+  return universe;
+}
+// Simulates the world up to and including one F1 race (used by Watch and Skip).
+export function simulateThroughF1Event(sourceUniverse,eventId){
+  let universe=deepClone(sourceUniverse);universe.showcase=null;let guard=0;
+  const done=()=>universe.calendar.find((event)=>event.id===eventId)?.status==='Complete';
+  while(!done()&&universe.phase!=='Season complete'&&guard<54){universe=simulateWorldWeekMutable(universe,Math.min(52,(universe.currentWeek||1)+1));guard+=1;if((universe.currentWeek||1)>=52)break;}
   return universe;
 }
 
@@ -1831,7 +1916,7 @@ export function advanceToNextSeason(sourceUniverse){
     };
   });
   const completedEvents=Object.values(universe.competitionEventResults||{}).flat();
-  universe.eventArchive=universe.eventArchive||[];universe.eventArchive.push(...deepClone(completedEvents));
+  universe.eventArchive=universe.eventArchive||[];universe.eventArchive.push(...completedEvents.map(archiveEventRecord));
   universe.seasonArchive.push({year:universe.year,championId:champion.id,championName:champion.name,constructorId:constructor.id,constructorName:constructor.name,standings:seriesArchive.F1.standings,constructors:seriesArchive.F1.teams,series:seriesArchive,calendar:universe.calendar.map((event)=>event.id),races:compressedRaces,events:completedEvents.map((record)=>({id:record.id,series:record.series,circuitId:record.circuitId,winnerId:record.winnerId,poleId:record.poleId,fastestLapDriverId:record.fastestLapDriverId,fastestLapTime:record.fastestLapTime})),awards:universe.awards.filter((award)=>award.year===universe.year),stories:universe.stories.filter((story)=>story.year===universe.year).slice(0,16)});
   const rng=makeRng(universe.seed+universe.year*7919);
   const snapshots=snapshotDriverSeasons(universe);

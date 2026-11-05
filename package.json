@@ -16,7 +16,8 @@
     "balance-12": "node scripts/balance-12.mjs",
     "universe-v8": "node scripts/universe-v8.mjs",
     "universe-v9": "node scripts/universe-v9.mjs",
-    "market-balance": "node scripts/market-balance.mjs"
+    "market-balance": "node scripts/market-balance.mjs",
+    "race-replay": "node scripts/race-replay.mjs"
   },
   "dependencies": {
     "react": "^19.1.1",
