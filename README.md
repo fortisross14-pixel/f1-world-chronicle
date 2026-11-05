@@ -27,7 +27,11 @@ npm run universe-v4
 npm run universe-v5
 npm run cash-analysis
 npm run balance-12
+npm run race-replay
+npm run legacy-calibration
 ```
+
+`balance-12` and `legacy-calibration` are long runs. `legacy-calibration` simulates three universes for 30 seasons each in parallel child processes.
 
 ## GitHub Pages deployment
 
@@ -54,7 +58,7 @@ The application opens on a dedicated universe screen rather than entering a pre-
 - Portable JSON export and import
 - Schema checks that prevent an older prototype save from crashing a newer build
 
-Schema v10 adds the global Generational-talent lifecycle, stronger driver archetypes, circuit conversion and long-run championship balancing. The hydration layer upgrades recent universe saves, adds missing staff/facility fields and rebuilds driver hierarchy, but very early prototype saves should be exported before switching builds.
+Schema v14 adds lap-by-lap replays, the showcase gate, sporting rivalries and the Hall of Fame. Saves from v13 load normally and show their existing results without a replay. Schema v10 added the global Generational-talent lifecycle, stronger driver archetypes, circuit conversion and long-run championship balancing. The hydration layer upgrades recent universe saves, adds missing staff/facility fields and rebuilds driver hierarchy, but very early prototype saves should be exported before switching builds.
 
 ## Complete driver world
 
@@ -215,7 +219,7 @@ Rarity never changes. Results do not simply follow rarity either: machinery, str
 
 ## Long-run competitive balance
 
-The included `balance-12` test runs the real race, development, market and career systems across twelve seasons. The final tuning targets a 1990s/early-2000s style range rather than a permanent single-driver sweep:
+The included `balance-12` test runs the lap-by-lap race engine, development, market and career systems across twelve seasons. The final tuning targets a 1990s/early-2000s style range rather than a permanent single-driver sweep:
 
 - Roughly two to four seasons per twelve with a top winner on 6–7 victories.
 - Most seasons with the leading driver on 8–10 victories.
@@ -223,7 +227,7 @@ The included `balance-12` test runs the real race, development, market and caree
 - Usually five to eight race winners and four to seven winning constructors in a season.
 - The leading champion of a twelve-year era normally finishes with three to five titles rather than winning almost every year.
 
-Three fixed twelve-season runs (36 seasons total) produced 8 seasons at 6–7 wins, 20 seasons at 8–10 wins, 7 seasons above 10 wins and one unusually open five-win season. The most successful driver in each twelve-year run won three or four championships. These are deterministic guardrails, not hard caps: an extraordinary driver-car combination can still produce a historic season.
+With the v14 lap-by-lap engine, three fixed twelve-season runs (36 seasons total) produce 6 seasons at 6–7 wins, 23 at 8–10 wins, 6 above 10 wins and one unusually open season, with 5–9 race winners per season. The most successful driver in each twelve-year run won four or five championships. `balance-12` now fails if the three-seed totals leave these ranges. These are deterministic guardrails, not hard caps: an extraordinary driver-car combination can still produce a historic season.
 
 ## Project structure
 
@@ -238,6 +242,13 @@ scripts/deterministic.mjs race-variety, events, transfers and flags validation
 scripts/universe-v4.mjs hierarchy, facilities, staff, pages and global-time validation
 scripts/universe-v5.mjs race tables, age gates, preseason reports, histories and cash-loop validation
 scripts/cash-analysis.mjs deterministic three-season facility and cash summary
+src/raceEngine.js lap-by-lap race engine shared by F1 and the support series
+src/moments.js    interest scores for race moments
+src/director.js   highlights director, driver of the day and position data
+src/LiveRace.jsx  Live Race page
+src/legacy.js     rivalries, head-to-head ledger and Hall of Fame
+scripts/race-replay.mjs overtaking, replay consistency, showcase gate and director checks
+scripts/legacy-calibration.mjs 3 × 30-season rivalry and Hall of Fame calibration
 vite.config.js    localhost and GitHub repository-base configuration
 .github/workflows/deploy.yml automated tests, build and Pages deployment
 ```
@@ -278,3 +289,46 @@ See `IMPLEMENTATION.md` for the detailed design-coverage map and current prototy
 - A driver can have only one market action each off-season.
 - Competition, circuit and Almanac records use compact top-five categories.
 - Added stronger season-dominance pressure while preserving elite-driver dynasties.
+
+## Universe v14: live races, rivalries and the Hall of Fame
+
+### Lap-by-lap race engine
+
+Every Grand Prix, Sprint and support race now runs all cars together, lap by lap, with cumulative race times (`src/raceEngine.js`). Pace still comes from car fit, driver level, racecraft, tyre skill, consistency, the weather timeline, heat, degradation and the team's weekend swing, but position changes happen on track:
+
+- A car that catches the car ahead within about one second must pass it. The chance depends on the pace difference, the circuit's overtaking trait, attacker racecraft against defender racecraft and composure, and tyre age and compound. A failed attempt costs a little time; rarely it ends in contact, which costs both cars time and can retire one of them.
+- Pit stops happen on the lap they are made: tyre wear, weather crossovers (timed by strategy quality), the two-compound rule, and opportunistic stops under a Safety Car or VSC. Undercuts emerge naturally.
+- A crash or a car stopped on track triggers a Safety Car or VSC on that lap. The Safety Car bunches the field and is followed by a restart. A red flag remains rare and only happens in wet conditions.
+- WEC runs in six-lap stints; F2 and F3 can make wear-based stops.
+
+Each result stores `snapshots[]` (running order, gap, interval, tyre, tyre age, stops and status per lap; every lap up to 60 laps, otherwise every lap at the start and finish and every second lap in between) and scored `moments[]` (start, overtake, failed attack, contact, pit, undercut, SC, VSC, restart, rain, DNF, fastest lap, team order, finish). Replay data is kept for the current season only. When a season is archived each event keeps its full classification plus its six best moments, so saves stay small. Results from older saves load normally and simply have no replay.
+
+Across two seeded seasons, `race-replay` measures about 18 passes per race on tight circuits such as Monaco, Hungaroring, Zandvoort and Singapore (Monaco itself usually sees under five), and about 50 on high-overtaking circuits.
+
+### Live Race and the showcase gate
+
+Choose **Watch race** on an event page, or from Home or Schedule for the next Grand Prix. The "director" (`src/director.js`) scores each moment by the position at stake (the win far above a podium, P10/P11 above the midfield), title contenders, rivalries, rain, closing laps and how close the cars are. It then builds:
+
+- **Highlights**: the start, the 10–20 best moments and the last three to five laps, about 60–90 seconds at 1×.
+- **Extended**: every third lap plus the notable moments in between.
+- **Result only**: straight to the flag.
+
+The page shows a lap counter that jumps between moments (for example "Lap 12 → 19"), a flag banner, a running-order tower whose rows slide when positions change, a gap strip where cars within a second visibly clump, a battle card, a race-radio feed, play/pause, 1×/2×/4×, mode and skip-to-flag controls, and optional synthesized sound cues with a mute toggle. After the flag it shows the podium, driver of the day, a tyre-strategy chart and a position chart. It works at phone width and respects `prefers-reduced-motion`.
+
+In **More → Races to watch** you can choose title deciders, wet-forecast races, protected classics, every F1 race, or none. The world clock stops before a chosen race. That race is not simulated until you watch or skip it, so its result cannot appear in standings, Home or Results early. Pausing never changes the outcome: the same race is produced either way.
+
+### Rivalries
+
+Every pair of F1 drivers has a head-to-head ledger (feeder pairs are tracked once they clash or are teammates). Each race adds clash heat: 3 for a fight for the win (both in the top two and within about a second, or a pass between them for P1), 1.5 for a podium fight and 2 for contact. A first-and-second title finish adds 4 at season end.
+
+A rivalry ignites when the two-season heat passes the threshold, they have fought for at least one win, and each has beaten the other at least once. Teammates can also become rivals when their head-to-head is between 40% and 60%, both score well, and their personal relationship has fallen to −25 or below. Formula 1 aims for two to four live rivalries and never more than five; at the cap a new rivalry must be hotter than the coolest live one to replace it. Each feeder series carries at most one. Two seasons without a clash makes a rivalry dormant; retirement makes it historic. Ignition creates a Press Room story, and live rivalry heat raises the interest score of their moments in the Live Race director.
+
+The Almanac's **Rivalries** tab lists live, dormant and historic rivalries; each opens a head-to-head page with the record, key races and a timeline.
+
+Personality relationship scores, previously stored in `universe.rivalries`, now live in `universe.relationships`. Older saves are migrated when they load.
+
+### Hall of Fame
+
+A retired F1 driver becomes eligible one season after retiring. Induction requires both at least one title or 20 wins and a legacy score in the top 10% of all retired F1 drivers. Legacy counts titles, wins, poles, podiums, all-time records and top-three seasons; rarity is never used. At most two drivers enter each year, unsuccessful candidates stay on the ballot for up to five years, and every year produces a Hall of Fame debate story. A separate, smaller **Motorsport Legends** list honours Formula E and WEC careers. Both appear in the Almanac's **Hall of Fame** tab, and inductees carry a badge on their driver page.
+
+`legacy-calibration` runs three seeded universes for 30 seasons each and fails if live-rivalry counts or Hall of Fame totals leave their targets. The current tuning averages 2.9–3.5 live F1 rivalries per season (never more than five, never more than one per feeder series) and produces 12–13 Hall of Fame members over 30 seasons, roughly one every 2.3–2.5 seasons. Early in a universe, when few drivers have retired, a champion with only a handful of wins can still clear the top-10% bar.

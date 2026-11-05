@@ -655,7 +655,7 @@ export function createUniverse(seed = 20260731) {
     teams, staff, engines:ENGINES, mainBrands:MAIN_BRANDS, sponsors:SPONSOR_BRANDS,
     drivers, feederTeams:{F2:f2Teams,F3:f3Teams,F4:f4Teams,FE:feTeams,WEC:wecTeams},
     calendar, competitionCalendars, circuitPool:[...CIRCUIT_POOL,...Object.values(VIRTUAL_CIRCUITS)], sessionResults:[], raceResults:[],
-    feederResults:{F2:[],F3:[],F4:[],FE:[],WEC:[]}, competitionEventResults:{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]}, eventArchive:[], marketHistory:[], preseasonReports:[], rivalries:[],
+    feederResults:{F2:[],F3:[],F4:[],FE:[],WEC:[]}, competitionEventResults:{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]}, eventArchive:[], marketHistory:[], preseasonReports:[], rivalries:[], relationships:[], headToHead:{}, hallOfFame:{inductees:[],ballot:[],legends:[],votes:[]},
     competitions:[
       {id:'F1',name:'Formula 1 World Championship',level:100},
       {id:'F2',name:'Formula 2 Championship',level:82},
@@ -738,7 +738,10 @@ export function hydrateUniverse(input){
   universe.schemaVersion=SCHEMA_VERSION;
   universe.competitionCalendars=universe.competitionCalendars||buildCompetitionCalendars(universe.seed||20260731,universe.calendar||[]);
   universe.competitionEventResults=universe.competitionEventResults||{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]};
-  universe.eventArchive=universe.eventArchive||[];universe.marketHistory=universe.marketHistory||[];universe.preseasonReports=universe.preseasonReports||[];universe.rivalries=universe.rivalries||[];universe.rules={fastestLapPoint:false,...(universe.rules||{})};universe.settings={...(universe.settings||{})};universe.settings.showcase={deciders:true,wet:false,classics:false,all:false,...(universe.settings.showcase||{})};universe.showcase=universe.showcase||null;
+  universe.eventArchive=universe.eventArchive||[];universe.marketHistory=universe.marketHistory||[];universe.preseasonReports=universe.preseasonReports||[];// Before schema 14, universe.rivalries held personality relationship scores.
+  // Moved by content, not version: early v14 builds still stored them there.
+  if(Array.isArray(universe.rivalries)&&universe.rivalries.some((item)=>!item.status)){const legacy=universe.rivalries.filter((item)=>!item.status);const known=new Set((universe.relationships||[]).map((item)=>item.id));universe.relationships=[...(universe.relationships||[]),...legacy.filter((item)=>!known.has(item.id))];universe.rivalries=universe.rivalries.filter((item)=>item.status);}
+  universe.rivalries=universe.rivalries||[];universe.relationships=universe.relationships||[];universe.headToHead=universe.headToHead||{};universe.hallOfFame={inductees:[],ballot:[],legends:[],votes:[],...(universe.hallOfFame||{})};universe.rules={fastestLapPoint:false,...(universe.rules||{})};universe.settings={...(universe.settings||{})};universe.settings.showcase={deciders:true,wet:false,classics:false,all:false,...(universe.settings.showcase||{})};universe.showcase=universe.showcase||null;
   universe.drivers=(universe.drivers||[]).map((driver)=>{
     const scale=SERIES_SALARY_SCALE[driver.series]||.25;
     const legacyMultiplier=sourceVersion<7&&driver.series!=='F1'&&driver.role!=='Test driver'?scale:1;

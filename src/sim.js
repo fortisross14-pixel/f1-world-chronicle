@@ -1,10 +1,9 @@
 import { RARITY, MAIN_BRANDS, makeRng, getTeam, getDriver, getStaff, getEngine, getSponsor, getMainBrand, COUNTRIES, createProceduralDriver, currentDriverRating, assignRosterHierarchy, driverHierarchyScore, effectiveDriverSkill } from './data.js';
 import { runLapRace, snapshotPolicy } from './raceEngine.js';
 import { scoreMoments } from './moments.js';
+import { ensureLegacyState, updateRivalriesAfterRace, rivalryTitleHeat, rivalryLifecycle, runHallOfFameVote, rivalryHeatBetween } from './legacy.js';
 
 export const REPLAY_VERSION = 1;
-// Phase 3 replaces this with live rivalry heat.
-function rivalryHeatBetween(){return 0;}
 
 export const GRAND_PRIX_POINTS = [25,18,15,12,10,8,6,4,2,1];
 export const SPRINT_POINTS = [8,7,6,5,4,3,2,1];
@@ -506,7 +505,7 @@ function maybeVoiceThought(universe,driver,thought,rng){
 function addRelationship(universe,a,b,delta,round,rng,reason='competition'){
   if(!a||!b||a.id===b.id)return;ensureDriverMind(a);ensureDriverMind(b);
   const nextA=clamp((a.mind.people[b.id]||0)+delta,-100,100);const nextB=clamp((b.mind.people[a.id]||0)+delta,-100,100);a.mind.people[b.id]=nextA;b.mind.people[a.id]=nextB;
-  universe.rivalries=universe.rivalries||[];const ids=[a.id,b.id].sort();let relation=universe.rivalries.find((item)=>item.a===ids[0]&&item.b===ids[1]);if(!relation){relation={id:`rel-${ids[0]}-${ids[1]}`,a:ids[0],b:ids[1],score:0,label:'Neutral',firstYear:universe.year,lastYear:universe.year,reasons:[]};universe.rivalries.push(relation);}relation.score=Math.round((nextA+nextB)/2);relation.label=relationshipLabel(relation.score);relation.lastYear=universe.year;relation.reasons=[reason,...(relation.reasons||[])].slice(0,8);
+  universe.relationships=universe.relationships||[];const ids=[a.id,b.id].sort();let relation=universe.relationships.find((item)=>item.a===ids[0]&&item.b===ids[1]);if(!relation){relation={id:`rel-${ids[0]}-${ids[1]}`,a:ids[0],b:ids[1],score:0,label:'Neutral',firstYear:universe.year,lastYear:universe.year,reasons:[]};universe.relationships.push(relation);}relation.score=Math.round((nextA+nextB)/2);relation.label=relationshipLabel(relation.score);relation.lastYear=universe.year;relation.reasons=[reason,...(relation.reasons||[])].slice(0,8);
   const thoughtA=personThoughtFor(nextA,b.name);const thoughtB=personThoughtFor(nextB,a.name);if(thoughtA){const entry=recordPrivateThought(universe,a,{kind:'driver',subjectId:b.id,...thoughtA,score:nextA,round});maybeVoiceThought(universe,a,entry,rng);}if(thoughtB){const entry=recordPrivateThought(universe,b,{kind:'driver',subjectId:a.id,...thoughtB,score:nextB,round});maybeVoiceThought(universe,b,entry,rng);}
 }
 function personalityCompatibilityDelta(a,b,highStakes=false){
@@ -625,7 +624,7 @@ function simulateFeederRound(universe,series,seed){
   const race=simulateSupportRace(universe,series,event,drivers,teams,finalQualifying.map((row)=>row.driverId),raceWeather,rng);const winner=getDriver(universe,race.winnerId);const winnerTeam=getTeam(universe,winner?.teamId);
   if(winnerTeam)(winnerTeam.staffIds||[]).map((id)=>getStaff(universe,id)).filter(Boolean).forEach((member)=>{member.wins=(member.wins||0)+1;});
   const record={id:`${universe.year}-${series}-${event.round}`,year:universe.year,series,eventId:event.id,circuitId:event.circuitId||event.id,round:event.round,event:{id:event.id,circuitId:event.circuitId||event.id,country:event.country,city:event.city,name:event.name,traits:event.traits,rain:event.rain,temp:event.temp},sessions:{FP1:fp1,FP2:fp2,Q1:q1,Q2:q2,Q3:q3,R:race},winnerId:winner?.id||null,teamWinnerId:winnerTeam?.id||null,poleId:pole?.id||null,podium:race.rows.slice(0,3).map((row)=>({driverId:row.driverId,teamId:row.teamId,position:row.position})),fastestLapDriverId:race.fastestLapDriverId,fastestLapTime:race.fastestLapTime,weather:{qualifying:qWeather.state,qualifyingTemperature:qWeather.temperature,race:raceWeather.state,raceTemperature:raceWeather.temperature,timeline:race.timeline}};
-  universe.competitionEventResults[series].push(record);universe.feederResults[series].push({year:universe.year,round:event.round,eventId:event.id,rows:race.rows,winnerId:record.winnerId});event.status='Complete';
+  universe.competitionEventResults[series].push(record);updateRivalriesAfterRace(universe,record,{story:(story)=>createStory(universe,{...story,round:story.round??event.round})});universe.feederResults[series].push({year:universe.year,round:event.round,eventId:event.id,rows:race.rows,winnerId:record.winnerId});event.status='Complete';
   evaluateDriverMindAfterRace(universe,series,event,race,mindRngFor(universe,series,event));
   if(winner)createStory(universe,{category:'World Results',headline:`${winner.name} wins the ${event.name} in ${series}`,dek:`${winnerTeam?.name||'The winning entrant'} converted P${race.rows[0]?.grid||'—'} on the grid into victory. ${race.timeline.some((state)=>state!=='Dry')?'Changing conditions made wet skill and strategy decisive.':`${winner.trackSpecialty} suited the circuit profile.`}`,priority:series==='F2'?74:60,subjects:[winner.id,winnerTeam?.id].filter(Boolean),round:event.round});
   return record;
@@ -793,8 +792,9 @@ function maybeCreateDriverInjury(universe,result,rng){
   createStory(universe,{category:'Medical Update',headline:`${driver.name} will miss at least one Grand Prix`,dek:`A minor racing injury opens the door for one of ${getTeam(universe,driver.teamId)?.name}'s test drivers.`,priority:84,subjects:[driver.id,driver.teamId],round:universe.currentRound+1});
 }
 
-export function simulateNextSession(sourceUniverse){
-  const universe=deepClone(sourceUniverse);
+export function simulateNextSession(sourceUniverse){return simulateNextSessionMutable(deepClone(sourceUniverse));}
+// Works on a universe the caller already owns (no clone).
+function simulateNextSessionMutable(universe){
   if(universe.phase==='Season complete') return universe;
   manageInjuriesAndReserves(universe);
   const eventIndex=universe.currentRound;
@@ -814,7 +814,8 @@ export function simulateNextSession(sourceUniverse){
   if(session.type==='Race'){
     universe.raceResults.push(result); event.status='Complete';
     universe.competitionEventResults=universe.competitionEventResults||{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]};
-    universe.competitionEventResults.F1.push(buildF1EventRecord(universe,event,result));
+    const f1Record=buildF1EventRecord(universe,event,result);universe.competitionEventResults.F1.push(f1Record);
+    updateRivalriesAfterRace(universe,f1Record,{story:(story)=>createStory(universe,{...story,round:story.round??event.round})});
     evaluateDriverMindAfterRace(universe,'F1',event,data,mindRngFor(universe,'F1',event));
     maybeCreateDriverInjury(universe,data,rng);
     applyDevelopment(universe,event,rng); updatePowerRankings(universe,event);
@@ -829,9 +830,10 @@ export function simulateNextSession(sourceUniverse){
   return universe;
 }
 
-export function simulateWeekend(sourceUniverse){
-  let universe=sourceUniverse; const startRound=universe.currentRound; let guard=0;
-  while(universe.phase!=='Season complete'&&universe.currentRound===startRound&&guard<8){universe=simulateNextSession(universe);guard+=1;}
+export function simulateWeekend(sourceUniverse){return simulateWeekendMutable(deepClone(sourceUniverse));}
+function simulateWeekendMutable(universe){
+  const startRound=universe.currentRound; let guard=0;
+  while(universe.phase!=='Season complete'&&universe.currentRound===startRound&&guard<8){universe=simulateNextSessionMutable(universe);guard+=1;}
   return universe;
 }
 function allSeriesComplete(universe){
@@ -848,7 +850,7 @@ function simulateWorldWeekMutable(universe,week){
   due.forEach(({series,event})=>{
     if(series==='F1'){
       if(universe.currentRound<universe.calendar.length&&universe.calendar[universe.currentRound]?.id===event.id){
-        universe=simulateWeekend(universe);
+        universe=simulateWeekendMutable(universe);
       }
     }else if(event.status!=='Complete'){
       simulateFeederRound(universe,series,event.weekendSeed+universe.year+week*17);
@@ -917,7 +919,7 @@ export function simulateToSeasonEnd(sourceUniverse,options={}){
   let universe=deepClone(sourceUniverse);let guard=0;universe.showcase=null;
   while(universe.phase!=='Season complete'&&guard<54){
     if(options.showcase){const pending=showcaseBlocking(universe,Math.min(52,(universe.currentWeek||1)+1));if(pending){universe.showcase={pending};return universe;}}
-    universe=simulateWorldWeekMutable(universe,Math.min(52,(universe.currentWeek||1)+1));guard+=1;if((universe.currentWeek||1)>=52&&!allSeriesComplete(universe)){['F1','F2','F3','F4','FE','WEC'].forEach((series)=>{const calendar=universe.competitionCalendars?.[series]||[];calendar.filter((event)=>event.status!=='Complete').forEach((event)=>{if(series==='F1'&&universe.currentRound<universe.calendar.length)universe=simulateWeekend(universe);else if(series!=='F1')simulateFeederRound(universe,series,event.weekendSeed+universe.year+guard);});});if(allSeriesComplete(universe)){universe.phase='Season complete';finalizeSeasonAwards(universe);}}}
+    universe=simulateWorldWeekMutable(universe,Math.min(52,(universe.currentWeek||1)+1));guard+=1;if((universe.currentWeek||1)>=52&&!allSeriesComplete(universe)){['F1','F2','F3','F4','FE','WEC'].forEach((series)=>{const calendar=universe.competitionCalendars?.[series]||[];calendar.filter((event)=>event.status!=='Complete').forEach((event)=>{if(series==='F1'&&universe.currentRound<universe.calendar.length)universe=simulateWeekendMutable(universe);else if(series!=='F1')simulateFeederRound(universe,series,event.weekendSeed+universe.year+guard);});});if(allSeriesComplete(universe)){universe.phase='Season complete';finalizeSeasonAwards(universe);}}}
   return universe;
 }
 // Simulates the world up to and including one F1 race (used by Watch and Skip).
@@ -1885,6 +1887,7 @@ export function advanceToNextSeason(sourceUniverse){
   const sponsorSnapshot=new Map(allTeamsBefore.map((team)=>[team.id,{series:team.series||'F1',name:team.name,sponsorIds:[...(team.sponsorIds||[])],income:team.finances?.secondarySponsorIncome||0}]));
   const staffSnapshot=new Map(universe.staff.map((member)=>[member.id,{teamId:member.teamId,role:member.role,salary:member.salary||0}]));
   finalizeSeasonAwards(universe);
+  ensureLegacyState(universe);rivalryTitleHeat(universe,{story:(story)=>createStory(universe,{...story,round:universe.calendar.length})});
   const standings=driverStandings(universe,'F1'); const constructors=constructorStandings(universe); const champion=standings[0]; const constructor=constructors[0];
   universe.teams.forEach((team)=>{
     const place=constructors.findIndex((item)=>item.id===team.id)+1;
@@ -1924,6 +1927,9 @@ export function advanceToNextSeason(sourceUniverse){
   currentF1Drivers(universe).forEach((driver)=>{driver.rookie=false;});
   seatMarket(universe,rng);
   ageArchiveAndRetire(universe,rng,snapshots);
+  // Rivalries cool or become historic; retired greats go to the Hall of Fame ballot.
+  rivalryLifecycle(universe,completedYear);
+  runHallOfFameVote(universe,completedYear,{story:(story)=>createStory(universe,story)});
   addNewProspects(universe,rng);
   fillAllSeriesSeats(universe,rng);
   reviewF1TestSeats(universe);

@@ -26,6 +26,11 @@
 | Magazine | Sporting, weather, prospect, technical, staff, financial, sponsor, calendar and market stories |
 | History and GOAT | Series archives, records, awards, driver/team careers, lineages and multiple GOAT modes |
 | GitHub Pages | Relative Vite asset paths and an automated GitHub Actions build/deploy workflow |
+| Lap-by-lap racing | All cars run together lap by lap with on-track passing, real pit laps, SC/VSC/red flags on the lap they happen, and stored snapshots and scored moments (`src/raceEngine.js`, `src/moments.js`) |
+| Live Race | Highlights/Extended/Result-only director, running-order tower, gap strip, battle card, race radio, podium, driver of the day, strategy and position charts (`src/director.js`, `src/LiveRace.jsx`) |
+| Showcase gate | Title deciders, wet forecasts, protected classics, all or none; the clock stops before a chosen race and its result does not exist until it is watched or skipped |
+| Rivalries | Head-to-head ledger, clash heat, ignition rules, teammate rivalries, caps, dormant/historic life cycle, Press Room stories, Almanac tab and head-to-head page (`src/legacy.js`) |
+| Hall of Fame | Legacy score without rarity, results floor plus top-10% bar, two per year, five-year ballot, yearly debate story, Motorsport Legends, Almanac tab and driver badge |
 | Long-run stability | Smoke, deterministic, v4 and v5 suites covering multi-season grids, race tables, age gates, race variety, calendars, flags, hierarchy, staff, facilities, finances, preseason reports and archives |
 
 ## Important simulation behavior
@@ -72,6 +77,22 @@ No active F1 race driver may enter below age 21. An age-21 entrant must come fro
 
 Facility upgrade prices become cubic above level 7 and elite levels decay faster. Teams invest a share of cash above their operating reserve and a share of positive prior balance, prioritizing weak facilities. Technical-director quality and facility quality interact when setting the next car target, so a wealthy team still needs excellent engineers.
 
+### Races are resolved on track
+
+The lap engine keeps the old pace inputs but no longer converts grid position into a time penalty. A faster car must catch and pass the car ahead; the circuit's overtaking trait has the largest effect, so Monaco-type venues usually see a handful of passes while Interlagos or Sakhir see around fifty. Snapshots are stored every lap for races up to 60 laps and every second lap in the middle of longer races. Replay data is kept for the current season only; archived events keep their classification and six key moments.
+
+### The showcase gate never changes a result
+
+`simulateWeeks` and `simulateToSeasonEnd` accept `{showcase:true}`. With it, the world stops before the week of an unwatched showcase race. Watching or skipping simulates that week exactly as an uninterrupted run would, so the outcome is identical and nothing about the race exists before then. Scripts call the functions without the option.
+
+### Rivalries and the Hall of Fame are narrative only
+
+`src/legacy.js` reads finished races and standings and never draws from a race rng, so seeded sporting results are unchanged. Rivalry heat only raises the interest score of moments in the Live Race director. Personality relationship scores moved from `universe.rivalries` to `universe.relationships`; older saves are migrated on load.
+
+### Season simulation clones once
+
+The exported simulation functions still return a new universe, but inside a run the week, weekend and session steps now work on that single copy instead of cloning the whole universe for every session. Results are identical and a full world season simulates roughly fifteen times faster, which is what makes the 90-season legacy calibration practical.
+
 ## Prototype boundaries
 
 This remains a browser management and history prototype rather than a licensed commercial Formula 1 title. It intentionally does not include:
@@ -82,4 +103,4 @@ This remains a browser management and history prototype rather than a licensed c
 - A full legal and licensing layer for publishing a commercial product with real brands
 - A visual car painter; liveries are generated from main-brand and sponsor colors in reusable SVG form
 
-The current race presentation is data-first: classifications, session context, weather, strategy, incidents, standings and generated narratives. The data model can support a later live-timing or animated race layer without replacing the universe systems.
+Races can now be watched as lap-by-lap highlights on the Live Race page. There is still no 3D or track-map animation.

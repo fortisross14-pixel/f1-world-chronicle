@@ -67,8 +67,8 @@ let counts=countMind(universe);
 assert.ok(counts.thoughts>80,`Expected a meaningful private-thought layer, got ${counts.thoughts}`);
 assert.ok(counts.press>15,`Expected press leakage, got ${counts.press}`);
 assert.ok(counts.official>0,'At least one repeated public stance should become official');
-assert.ok((universe.rivalries||[]).length>0,'Driver relationships/rivalries should emerge');
-for(const relation of universe.rivalries||[])assert.ok(relation.score>=-100&&relation.score<=100,'Relationship score out of bounds');
+assert.ok((universe.relationships||[]).length>0,'Driver relationships/rivalries should emerge');
+for(const relation of universe.relationships||[])assert.ok(relation.score>=-100&&relation.score<=100,'Relationship score out of bounds');
 for(const driver of universe.drivers){
   for(const score of Object.values(driver.mind?.teamSentiments||{}))assert.ok(score>=-100&&score<=100,'Team sentiment out of bounds');
   for(const score of Object.values(driver.mind?.people||{}))assert.ok(score>=-100&&score<=100,'Person relationship out of bounds');
@@ -86,7 +86,7 @@ assert.equal(universe.preseasonReports.at(-1)?.year,2);
 universe=simulateToSeasonEnd(universe);
 counts=countMind(universe);
 const principalLinks=universe.staff.filter((s)=>s.role==='Team Principal').flatMap((s)=>Object.values(s.relationships||{}));
-const negativeRivalries=(universe.rivalries||[]).filter((r)=>r.score<=-25);
+const negativeRivalries=(universe.relationships||[]).filter((r)=>r.score<=-25);
 assert.ok(principalLinks.length>0,'Press comments should create team-principal relationship records');
 assert.ok(negativeRivalries.length>0,'At least one driver rivalry should become meaningfully negative');
 
@@ -95,8 +95,18 @@ console.log('Universe v9 personality validation passed:',{
   thoughts:counts.thoughts,
   press:counts.press,
   officialStances:counts.official,
-  relationships:universe.rivalries?.length||0,
+  relationships:universe.relationships?.length||0,
   negativeRivalries:negativeRivalries.length,
   principalRelationships:principalLinks.length,
   sportingIsolation:'passed',
 });
+
+// Relationship records left in universe.rivalries by early v14 builds move to universe.relationships on load.
+{
+  const early=structuredClone(universe);
+  early.rivalries=[...(early.relationships||[]).slice(0,3)];early.relationships=undefined;
+  const fixed=hydrateUniverse(early);
+  assert.ok(fixed.rivalries.every((item)=>item.status),'Only sporting rivalries remain in universe.rivalries');
+  assert.ok(fixed.relationships.length>=Math.min(3,(universe.relationships||[]).length),'Relationship records are preserved');
+  console.log('Relationship migration passed.');
+}

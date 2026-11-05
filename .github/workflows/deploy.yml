@@ -62,6 +62,11 @@ jobs:
       - name: Run lap-by-lap race replay test
         run: npm run race-replay
 
+      # Three 30-season universes in parallel child processes.
+      - name: Run rivalry and Hall of Fame calibration
+        run: npm run legacy-calibration
+        timeout-minutes: 20
+
       # package.json invokes Vite through Node directly, so the build does not
       # depend on the executable bit of node_modules/.bin/vite.
       - name: Build GitHub Pages bundle
