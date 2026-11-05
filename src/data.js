@@ -674,7 +674,7 @@ export function createUniverse(seed = 20260731) {
     ],
     records:{fastestLaps:[],youngestWins:[],classicRaces:[],teamLineage:[],driverMilestones:[]},
     seasonArchive:[], awards:[], pendingDecisions:[], storyCounter:0,
-    settings:{calendarChurn:'Conservative',teamDynamism:'Plausible',authenticLock:true,detailLevel:'Full',autoSave:true},
+    settings:{calendarChurn:'Conservative',teamDynamism:'Plausible',authenticLock:true,detailLevel:'Full',autoSave:true,showcase:{deciders:true,wet:false,classics:false,all:false}},
     rules:{fastestLapPoint:false},
     ui:{selectedSeries:'F1'},
   };
@@ -738,7 +738,7 @@ export function hydrateUniverse(input){
   universe.schemaVersion=SCHEMA_VERSION;
   universe.competitionCalendars=universe.competitionCalendars||buildCompetitionCalendars(universe.seed||20260731,universe.calendar||[]);
   universe.competitionEventResults=universe.competitionEventResults||{F1:[],F2:[],F3:[],F4:[],FE:[],WEC:[]};
-  universe.eventArchive=universe.eventArchive||[];universe.marketHistory=universe.marketHistory||[];universe.preseasonReports=universe.preseasonReports||[];universe.rivalries=universe.rivalries||[];universe.rules={fastestLapPoint:false,...(universe.rules||{})};
+  universe.eventArchive=universe.eventArchive||[];universe.marketHistory=universe.marketHistory||[];universe.preseasonReports=universe.preseasonReports||[];universe.rivalries=universe.rivalries||[];universe.rules={fastestLapPoint:false,...(universe.rules||{})};universe.settings={...(universe.settings||{})};universe.settings.showcase={deciders:true,wet:false,classics:false,all:false,...(universe.settings.showcase||{})};universe.showcase=universe.showcase||null;
   universe.drivers=(universe.drivers||[]).map((driver)=>{
     const scale=SERIES_SALARY_SCALE[driver.series]||.25;
     const legacyMultiplier=sourceVersion<7&&driver.series!=='F1'&&driver.role!=='Test driver'?scale:1;

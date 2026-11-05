@@ -119,3 +119,44 @@ console.log('Race replay validation passed:', {
   seasons: summary,
   overtakesPerRace: { lowOvertakeTracks: Number(lowMean.toFixed(1)), midTracks: Number(midMean.toFixed(1)), highOvertakeTracks: Number(highMean.toFixed(1)), all: Number(allMean.toFixed(1)) },
 });
+
+// ---- Showcase gate and highlights director (Phase 2).
+{
+  const { simulateWeeks, simulateThroughF1Event, showcaseReason, isTitleDecider } = await import('../src/sim.js');
+  const { buildDirectorScript } = await import('../src/director.js');
+  const base = createUniverse(4242);
+  base.settings.showcase = { deciders: false, wet: false, classics: false, all: true };
+  const gated = simulateWeeks(base, 8, { showcase: true });
+  assert.equal(gated.competitionEventResults.F1.length, 0, 'The gate must stop before the first chosen F1 race');
+  assert.ok(gated.showcase?.pending?.eventId === base.calendar[0].id, 'The pending showcase race must be exposed');
+  assert.ok(gated.drivers.every((driver) => driver.series !== 'F1' || driver.season.points === 0), 'No F1 points may exist before the showcase race is watched');
+  const again = simulateWeeks(gated, 4, { showcase: true });
+  assert.equal(again.currentWeek, gated.currentWeek, 'The clock must not move past an unwatched showcase race');
+  const watched = simulateThroughF1Event(gated, gated.showcase.pending.eventId);
+  const free = simulateThroughF1Event(createUniverse(4242), base.calendar[0].id);
+  assert.equal(watched.competitionEventResults.F1.length, 1);
+  assert.deepEqual(watched.competitionEventResults.F1[0].sessions.R.rows.map((row) => [row.driverId, row.points]), free.competitionEventResults.F1[0].sessions.R.rows.map((row) => [row.driverId, row.points]), 'Pausing at the gate must not change the race result');
+  const ungated = simulateWeeks(createUniverse(4242), 8);
+  assert.ok(ungated.competitionEventResults.F1.length > 0 && !ungated.showcase, 'Without the option the gate is off');
+  const noneSet = createUniverse(4242); noneSet.settings.showcase = { deciders: false, wet: false, classics: false, all: false };
+  assert.equal(showcaseReason(noneSet, noneSet.calendar[0]), null);
+  assert.equal(isTitleDecider(createUniverse(4242), base.calendar[0]), false, 'Round one cannot decide a title');
+
+  const season = simulateToSeasonEnd(createUniverse(17));
+  const durations = [];
+  for (const record of season.competitionEventResults.F1) {
+    const highlights = buildDirectorScript(record.sessions.R, 'highlights');
+    durations.push(highlights.duration / 1000);
+    assert.equal(highlights.beats[0].kind, 'grid');
+    assert.ok(highlights.beats.some((beat) => beat.kind === 'start'));
+    assert.equal(highlights.beats.at(-1).kind, 'finish');
+    assert.ok(highlights.beats.filter((beat) => beat.kind === 'closing').length >= 2, 'Highlights must include the closing laps');
+    const picked = highlights.beats.filter((beat) => beat.kind === 'moment' || beat.kind === 'flag').reduce((sum, beat) => sum + beat.moments.length, 0);
+    assert.ok(picked >= 8 && picked <= 22, `Highlights should feature about 10–20 moments, got ${picked}`);
+    assert.equal(buildDirectorScript(record.sessions.R, 'result').beats.length, 1);
+  }
+  const meanDuration = durations.reduce((sum, value) => sum + value, 0) / durations.length;
+  assert.ok(meanDuration >= 55 && meanDuration <= 95, `Highlights should last about 60–90 s at 1x, mean ${meanDuration.toFixed(1)} s`);
+  assert.ok(durations.every((value) => value >= 40 && value <= 120), 'Every highlights reel must stay watchable');
+  console.log('Showcase gate and director validation passed:', { highlightsSeconds: { min: Math.round(Math.min(...durations)), mean: Math.round(meanDuration), max: Math.round(Math.max(...durations)) } });
+}
