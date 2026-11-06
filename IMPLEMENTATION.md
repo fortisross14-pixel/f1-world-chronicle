@@ -28,6 +28,7 @@
 | GitHub Pages | Relative Vite asset paths and an automated GitHub Actions build/deploy workflow |
 | Lap-by-lap racing | All cars run together lap by lap with on-track passing, real pit laps, SC/VSC/red flags on the lap they happen, and stored snapshots and scored moments (`src/raceEngine.js`, `src/moments.js`) |
 | Live Race | Highlights/Extended/Result-only director, running-order tower, gap strip, battle card, race radio, podium, driver of the day, strategy and position charts (`src/director.js`, `src/LiveRace.jsx`) |
+| Grand Prix weekend | Next GP button and guided Pre-race → Qualifying → Sprint → Race → Post-race flow with breadcrumbs, spoiler-free win odds and standings moves (`src/GrandPrixWeekend.jsx`, `docs/GRAND_PRIX_WEEKEND.md`) |
 | Showcase gate | Title deciders, wet forecasts, protected classics, all or none; the clock stops before a chosen race and its result does not exist until it is watched or skipped |
 | Rivalries | Head-to-head ledger, clash heat, ignition rules, teammate rivalries, caps, dormant/historic life cycle, Press Room stories, Almanac tab and head-to-head page (`src/legacy.js`) |
 | Hall of Fame | Legacy score without rarity, results floor plus top-10% bar, two per year, five-year ballot, yearly debate story, Motorsport Legends, Almanac tab and driver badge |
