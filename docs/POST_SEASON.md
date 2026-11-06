@@ -39,6 +39,12 @@ Code: `src/PostSeason.jsx`, wired up in `App()` in `src/main.jsx`. Styles reuse 
 - **Pre-season form**: `powerRankings(pending,'drivers'|'teams')`, which uses ability and car strength, not last year's points.
   Support series: the highest `currentDriverRating` race driver and the team with the best rating.
 
+## Links
+
+Driver, team, staff and championship names open their pages. Back returns to the same step. Linked pages show the
+completed-season world (the off-season is not committed yet), so a driver who just moved still shows last year's team there.
+New prospects only exist in the pending world, so their names are plain text.
+
 ## Routes
 
 `#/postseason/<year>/<step>` with step `summary | people | market | preseason`. Each step is a history entry,

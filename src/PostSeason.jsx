@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getDriver, getTeam, getStaff, currentDriverRating } from './data.js';
 import { driverStandings, constructorStandings, powerRankings } from './sim.js';
+import { L, restoreScroll } from './Links.jsx';
 
 // Guided post-season review. See docs/POST_SEASON.md for which universe each step reads.
 export const POSTSEASON_STEPS=['summary','people','market','preseason'];
@@ -44,8 +45,8 @@ function Crumbs({step,reached,go,onSkip}){
 }
 const Next=({label,onClick})=><div className="gpw-next"><button className="primary" onClick={onClick}>{label}</button></div>;
 
-function Leader({label,driver,value,Flag,open}){
-  return <button className="ps-leader" onClick={()=>driver&&open(driver.id)} disabled={!driver}><small>{label}</small><span><Flag driver={driver}/><b>{driver?.name||'—'}</b></span><em>{value}</em></button>;
+function Leader({label,driver,value,Flag}){
+  return <div className="ps-leader"><small>{label}</small><span><Flag driver={driver}/><b><L kind="driver" id={driver?.id}>{driver?.name||'—'}</L></b></span><em>{value}</em></div>;
 }
 
 function Summary({before,pending,ui,open,next}){
@@ -67,14 +68,14 @@ function Summary({before,pending,ui,open,next}){
   return <>
     <div className="gpw-hero winner" style={{'--team':team?.primary||'#777'}}>
       <small>{yearLabel(year).toUpperCase()} · FORMULA 1 WORLD CHAMPION</small>
-      <h1><Flag driver={champ}/> {champ?.name||'—'}</h1>
-      <p>{getTeam(before,champ?.teamId)?.name} · {champ?.season.points} points{runner?` · by ${champ.season.points-runner.season.points} over ${runner.name}`:''}{titles?` · ${titles} ${titles===1?'title':'titles'}`:''}</p>
-      <div className="gpw-tags"><span className="gpw-tag hot">Constructors: {team?.name} · {team?.seasonPoints} pts</span></div>
+      <h1><Flag driver={champ}/> <L kind="driver" id={champ?.id}>{champ?.name||'—'}</L></h1>
+      <p><L kind="team" id={champ?.teamId}>{getTeam(before,champ?.teamId)?.name}</L> · {champ?.season.points} points{runner?<> · by {champ.season.points-runner.season.points} over <L kind="driver" id={runner.id}>{runner.name}</L></>:''}{titles?` · ${titles} ${titles===1?'title':'titles'}`:''}</p>
+      <div className="gpw-tags"><span className="gpw-tag hot">Constructors: <L kind="team" id={team?.id}>{team?.name}</L> · {team?.seasonPoints} pts</span><L kind="series" id="F1" className="gpw-tag">Final standings ›</L></div>
     </div>
     <Panel title="F1 season leaders" eyebrow={yearLabel(year).toUpperCase()}><div className="ps-leaders">{leaders.map((item)=><Leader key={item.label} {...item} Flag={Flag} open={open}/>)}</div></Panel>
     <div className="gpw-grid two">
-      <Panel title="Awards" eyebrow="FORMULA 1">{awards.length?<div className="gpw-list">{awards.map((award)=><div key={award.type}><strong className="ps-award">{award.type}</strong><span><b>{award.winnerName}</b><small>{award.reason}</small></span></div>)}</div>:<p>No awards recorded.</p>}</Panel>
-      <Panel title="Champions" eyebrow="EVERY SERIES"><div className="ps-champs">{SUPPORT.map((series)=>{const driver=driverStandings(before,series)[0];const teamTable=(before.feederTeams?.[series]||[]).slice().sort((a,b)=>(b.points||0)-(a.points||0)||(b.wins||0)-(a.wins||0));const t=teamTable[0];return <div key={series}><SeriesTag series={series}/><button onClick={()=>driver&&open(driver.id)}><Flag driver={driver}/><b>{driver?.name||'—'}</b></button><small>{t?.name||'—'}</small></div>;})}</div></Panel>
+      <Panel title="Awards" eyebrow="FORMULA 1">{awards.length?<div className="gpw-list">{awards.map((award)=><div key={award.type}><strong className="ps-award">{award.type}</strong><span><b><L kind={getDriver(before,award.winnerId)?'driver':'team'} id={award.winnerId}>{award.winnerName}</L></b><small>{award.reason}</small></span></div>)}</div>:<p>No awards recorded.</p>}</Panel>
+      <Panel title="Champions" eyebrow="EVERY SERIES"><div className="ps-champs">{SUPPORT.map((series)=>{const driver=driverStandings(before,series)[0];const teamTable=(before.feederTeams?.[series]||[]).slice().sort((a,b)=>(b.points||0)-(a.points||0)||(b.wins||0)-(a.wins||0));const t=teamTable[0];return <div key={series}><L kind="series" id={series}><SeriesTag series={series}/></L><span className="ps-who"><Flag driver={driver}/><b><L kind="driver" id={driver?.id}>{driver?.name||'—'}</L></b></span><small><L kind="team" id={t?.id}>{t?.name||'—'}</L></small></div>;})}</div></Panel>
     </div>
     <Next label="Retirements & rookies ›" onClick={next}/>
   </>;
@@ -92,14 +93,14 @@ function People({before,pending,ui,open,next}){
   const breakdown=Object.keys(RARITY_RANK).map((rarity)=>[rarity,spawned.filter((item)=>item.rarity===rarity).length]).filter(([,count])=>count);
   const career=(driver)=>{const c=driver?.career||{};return `${c.titles||0} titles · ${c.f1Wins||0} wins · ${c.f1Podiums||0} podiums`;};
   return <>
-    {inductees.length>0&&<div className="ps-hof"><small>HALL OF FAME · CLASS OF {yearLabel(completed).toUpperCase()}</small>{inductees.map((item)=>{const driver=getDriver(pending,item.driverId);return <button key={item.driverId} onClick={()=>open(item.driverId)}><Flag driver={driver}/><b>{item.name}</b><span>{item.titles} titles · {item.wins} wins · {item.podiums} podiums</span></button>;})}</div>}
+    {inductees.length>0&&<div className="ps-hof"><small>HALL OF FAME · CLASS OF {yearLabel(completed).toUpperCase()}</small>{inductees.map((item)=>{const driver=getDriver(pending,item.driverId);return <div key={item.driverId}><Flag driver={driver}/><b><L kind="driver" id={item.driverId}>{item.name}</L></b><span>{item.titles} titles · {item.wins} wins · {item.podiums} podiums</span></div>;})}</div>}
     <Panel title="Retirements" eyebrow={`${retired.length} DRIVERS RETIRED`}>
-      {retired.length?<div className="gpw-list ps-rows">{retired.slice(0,5).map((item)=><div key={item.driverId} onClick={()=>open(item.driverId)} role="button"><Flag driver={item.driver}/><span><b>{item.name} {hof.has(item.driverId)&&<i className="ps-badge">HoF</i>}</b><small>{item.age} · {item.lastSeries}{item.was?.teamId?` · ${getTeam(before,item.was.teamId)?.name||''}`:''} · {career(item.driver)}</small></span><RarityTag rarity={item.rarity}/></div>)}</div>:<p>No retirements.</p>}
+      {retired.length?<div className="gpw-list ps-rows">{retired.slice(0,5).map((item)=><div key={item.driverId}><Flag driver={item.driver}/><span><b><L kind="driver" id={item.driverId}>{item.name}</L> {hof.has(item.driverId)&&<i className="ps-badge">HoF</i>}</b><small>{item.age} · {item.lastSeries}{item.was?.teamId?<> · <L kind="team" id={item.was.teamId}>{getTeam(before,item.was.teamId)?.name||''}</L></>:''} · {career(item.driver)}</small></span><RarityTag rarity={item.rarity}/></div>)}</div>:<p>No retirements.</p>}
       {retired.length>5&&<p className="ps-more">+{retired.length-5} more retired</p>}
     </Panel>
     <Panel title="New prospects" eyebrow={`${spawned.length} PROSPECTS · AVG RATING ${Math.round(avg(spawned.map((item)=>item.rating)))||'—'}`}>
       {breakdown.length>0&&<p className="ps-breakdown">{breakdown.map(([rarity,count])=>`${count} ${rarity}`).join(' · ')}</p>}
-      {spawned.length?<div className="gpw-list ps-rows">{spawned.slice(0,5).map((item)=><div key={item.driverId} onClick={()=>open(item.driverId)} role="button"><Flag driver={item.driver}/><span><b>{item.name}</b><small>{item.age} · {getTeam(pending,item.teamId)?.name||'Unsigned'}</small></span><SeriesTag series={item.series}/><RarityTag rarity={item.rarity}/><em>{item.rating}</em></div>)}</div>:<p>No new prospects.</p>}
+      {spawned.length?<div className="gpw-list ps-rows">{spawned.slice(0,5).map((item)=><div key={item.driverId}><Flag driver={item.driver}/><span><b><L kind="driver" id={item.driverId}>{item.name}</L></b><small>{item.age} · <L kind="team" id={item.teamId}>{getTeam(pending,item.teamId)?.name||'Unsigned'}</L></small></span><L kind="series" id={item.series}><SeriesTag series={item.series}/></L><RarityTag rarity={item.rarity}/><em>{item.rating}</em></div>)}</div>:<p>No new prospects.</p>}
     </Panel>
     <Next label="Market ›" onClick={next}/>
   </>;
@@ -113,17 +114,17 @@ function Market({pending,ui,open,next}){
   const staffMoves=(pending.staffMarketHistory||[]).filter((item)=>item.year===pending.year&&item.fromTeamId!==item.toTeamId).map((item)=>({...item,rating:getStaff(pending,item.staffId)?.rating||0}));
   const topStaff=eliteAndTop(staffMoves,(m)=>m.rarity,(m)=>m.rating);
   const report=pending.preseasonReports?.[0]||{};const sponsors=(report.sponsorChanges||[]).filter((item)=>item.type!=='Renewed');
-  const side=(end)=>end?`${end.teamName||'Free agents'}${end.series&&end.series!=='FREE'?` (${end.series})`:''}`:'—';
+  const side=(end)=>end?<><L kind="team" id={end.teamId}>{end.teamName||'Free agents'}</L>{end.series&&end.series!=='FREE'?` (${end.series})`:''}</>:'—';
   return <>
     <p className="ps-count">{moves.length} driver moves · {staffMoves.length} staff moves</p>
     <Panel title="Driver transfers" eyebrow={`${yearLabel(pending.year).toUpperCase()} GRID`}>
-      {topDrivers.length?<div className="gpw-list ps-rows">{topDrivers.map((move)=><div key={move.driverId} onClick={()=>open(move.driverId)} role="button"><Flag driver={move.driver}/><span><b>{move.driverName}</b><small>{side(move.from)} → {side(move.to)}{seatLabel(move.to)?` · ${seatLabel(move.to)}`:''}</small><small className="ps-reason">{move.reason}</small></span><RarityTag rarity={move.driver?.rarity}/><em>{move.driver?currentDriverRating(move.driver):'—'}</em></div>)}</div>:<p>No driver moves.</p>}
+      {topDrivers.length?<div className="gpw-list ps-rows">{topDrivers.map((move)=><div key={move.driverId}><Flag driver={move.driver}/><span><b><L kind="driver" id={move.driverId}>{move.driverName}</L></b><small>{side(move.from)} → {side(move.to)}{seatLabel(move.to)?` · ${seatLabel(move.to)}`:''}</small><small className="ps-reason">{move.reason}</small></span><RarityTag rarity={move.driver?.rarity}/><em>{move.driver?currentDriverRating(move.driver):'—'}</em></div>)}</div>:<p>No driver moves.</p>}
     </Panel>
     <Panel title="Staff moves" eyebrow="PADDOCK">
-      {topStaff.length?<div className="gpw-list ps-rows staff">{topStaff.map((move)=><div key={move.id||move.staffId}><span><b>{move.name}</b><small>{move.role} · {move.fromTeamName} → {move.toTeamName}{move.series?` (${move.series})`:''}</small><small className="ps-reason">{money(move.oldSalary)} → {money(move.newSalary)}</small></span><RarityTag rarity={move.rarity}/><em>{move.rating||'—'}</em></div>)}</div>:<p>No staff moves.</p>}
+      {topStaff.length?<div className="gpw-list ps-rows staff">{topStaff.map((move)=><div key={move.id||move.staffId}><span><b><L kind="staff" id={move.staffId}>{move.name}</L></b><small>{move.role} · <L kind="team" id={move.fromTeamId}>{move.fromTeamName}</L> → <L kind="team" id={move.toTeamId}>{move.toTeamName}</L>{move.series?` (${move.series})`:''}</small><small className="ps-reason">{money(move.oldSalary)} → {money(move.newSalary)}</small></span><RarityTag rarity={move.rarity}/><em>{move.rating||'—'}</em></div>)}</div>:<p>No staff moves.</p>}
     </Panel>
     {((report.brandingChanges||[]).length>0||sponsors.length>0)&&<Panel title="Branding & sponsors" eyebrow={`${(report.brandingChanges||[]).length} REBRANDS · ${sponsors.length} SPONSOR CHANGES`} action={<button className="link" onClick={()=>setShowBrands((v)=>!v)}>{showBrands?'Hide':'Show'}</button>}>
-      {showBrands&&<div className="gpw-list">{(report.brandingChanges||[]).map((item)=><div key={`b-${item.teamId}`}><strong>{item.series}</strong><span><b>{item.fromName} → {item.toName}</b></span></div>)}{sponsors.slice(0,20).map((item,i)=><div key={`s-${i}`}><strong>{item.series||''}</strong><span><b>{item.teamName||''}</b><small>{item.oldSponsorName} → {item.newSponsorName}</small></span></div>)}</div>}
+      {showBrands&&<div className="gpw-list">{(report.brandingChanges||[]).map((item)=><div key={`b-${item.teamId}`}><strong>{item.series}</strong><span><b><L kind="team" id={item.teamId}>{item.fromName} → {item.toName}</L></b></span></div>)}{sponsors.slice(0,20).map((item,i)=><div key={`s-${i}`}><strong>{item.series||''}</strong><span><b><L kind="team" id={item.teamId}>{item.teamName||''}</L></b><small>{item.oldSponsorName} → {item.newSponsorName}</small></span></div>)}</div>}
     </Panel>}
     <Next label="Pre-season ›" onClick={next}/>
   </>;
@@ -137,13 +138,13 @@ function PreSeason({pending,ui,open,onStart,onNextGP,busy}){
   return <>
     <div className="gpw-hero"><small>{yearLabel(pending.year).toUpperCase()} · PRE-SEASON FORM</small><h1>The new grid</h1><p>Ranked on current ability and car strength, not last year's points.</p></div>
     <div className="gpw-grid two">
-      <Panel title="F1 drivers" eyebrow="PRE-SEASON FORM"><div className="gpw-list">{drivers.map((driver,i)=><div key={driver.id} onClick={()=>open(driver.id)} role="button"><strong>P{i+1}</strong><span><b><Flag driver={driver}/> {driver.name}</b><small>{getTeam(pending,driver.teamId)?.name} · rating {currentDriverRating(driver)}</small></span></div>)}</div></Panel>
-      <Panel title="F1 teams" eyebrow="PRE-SEASON FORM"><div className="gpw-list">{teams.map((team,i)=><div key={team.id}><strong>P{i+1}</strong><span><b><TeamStripe team={team}/> {team.name}</b><small>car {Math.round(avg(Object.values(team.car||{})))}</small></span></div>)}</div></Panel>
+      <Panel title="F1 drivers" eyebrow="PRE-SEASON FORM"><div className="gpw-list">{drivers.map((driver,i)=><div key={driver.id}><strong>P{i+1}</strong><span><b><Flag driver={driver}/> <L kind="driver" id={driver.id}>{driver.name}</L></b><small><L kind="team" id={driver.teamId}>{getTeam(pending,driver.teamId)?.name}</L> · rating {currentDriverRating(driver)}</small></span></div>)}</div></Panel>
+      <Panel title="F1 teams" eyebrow="PRE-SEASON FORM"><div className="gpw-list">{teams.map((team,i)=><div key={team.id}><strong>P{i+1}</strong><span><b><TeamStripe team={team}/> <L kind="team" id={team.id}>{team.name}</L></b><small>car {Math.round(avg(Object.values(team.car||{})))}</small></span></div>)}</div></Panel>
     </div>
     <Panel title="Other series" eyebrow="FAVOURITES"><div className="ps-champs">{SUPPORT.map((series)=>{
       const driver=pending.drivers.filter((d)=>d.active&&d.series===series&&d.role==='Race driver').sort((a,b)=>currentDriverRating(b)-currentDriverRating(a))[0];
       const team=[...(pending.feederTeams?.[series]||[])].sort((a,b)=>teamRating(b)-teamRating(a))[0];
-      return <div key={series}><SeriesTag series={series}/><button onClick={()=>driver&&open(driver.id)}><Flag driver={driver}/><b>{driver?`${driver.name} · ${currentDriverRating(driver)}`:'—'}</b></button><small>{team?.name||'—'}</small></div>;})}</div></Panel>
+      return <div key={series}><L kind="series" id={series}><SeriesTag series={series}/></L><span className="ps-who"><Flag driver={driver}/><b>{driver?<><L kind="driver" id={driver.id}>{driver.name}</L> · {currentDriverRating(driver)}</>:'—'}</b></span><small><L kind="team" id={team?.id}>{team?.name||'—'}</L></small></div>;})}</div></Panel>
     {first&&<div className="watch-cta"><div><small>ROUND 1 · {yearLabel(pending.year).toUpperCase()}</small><b>{first.name}</b><span>{first.country} · {first.city}</span></div></div>}
     <div className="gpw-next actions"><button className="outline" onClick={onStart} disabled={busy}>Start {yearLabel(pending.year)}</button>{first&&<button className="primary" onClick={onNextGP} disabled={busy}>Next GP ›</button>}</div>
   </>;
@@ -156,7 +157,7 @@ function PreSeason({pending,ui,open,onStart,onNextGP,busy}){
 export function PostSeason({review,step,go,onSkip,onStart,onNextGP,onOpen,canOpen,openDriver,busy,ui}){
   const current=POSTSEASON_STEPS.includes(step)?step:'summary';
   const index=POSTSEASON_STEPS.indexOf(current);
-  useEffect(()=>{window.scrollTo?.({top:0});},[current]);
+  useEffect(()=>{restoreScroll();},[current]);
   if(!review)return <section className="page"><div className="empty"><b>F1</b><h3>No season review open</h3><p>{canOpen?'The season is complete.':'The review opens when every championship has finished.'}</p>{canOpen&&<button className="primary" onClick={onOpen} disabled={busy}>Season review</button>}</div></section>;
   const reached=Math.max(review.reached||0,index);
   const next=()=>go(POSTSEASON_STEPS[Math.min(POSTSEASON_STEPS.length-1,index+1)]);

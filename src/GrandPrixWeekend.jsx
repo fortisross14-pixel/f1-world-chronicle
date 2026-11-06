@@ -3,6 +3,7 @@ import { getDriver, getTeam, currentDriverRating } from './data.js';
 import { driverStandings, constructorStandings, raceForecast, showcaseReason, isTitleDecider, circuitFitRanking, hasReplay, qualifyingCuts } from './sim.js';
 import { driverOfTheDay } from './director.js';
 import { LiveRace } from './LiveRace.jsx';
+import { L, useLinks, restoreScroll } from './Links.jsx';
 
 // Guided Grand Prix weekend. See docs/GRAND_PRIX_WEEKEND.md for the spoiler rules.
 const STEP_LABELS={pre:'Pre-race',quali:'Qualifying',sprint:'Sprint',race:'Race',post:'Post-race'};
@@ -70,18 +71,18 @@ function PreRace({universe,pre,record,event,pendingReason,ui,next}){
     </div>
     <div className="gpw-grid">
       {pre?<Panel title="Win odds" eyebrow="BEFORE QUALIFYING">
-        {odds.length?<div className="gpw-odds">{odds.map(({driver,p,odds:value})=>{const team=getTeam(universe,driver.teamId);return <div key={driver.id}><Flag driver={driver}/><span><b>{driver.name}</b><small>{team?.name}</small></span><i><b style={{width:`${p/maxP*100}%`,background:teamColor(team)}}/></i><em>{value>=100?Math.round(value):value.toFixed(value>=10?1:2)}</em></div>;})}</div>:<p>No odds available.</p>}
+        {odds.length?<div className="gpw-odds">{odds.map(({driver,p,odds:value})=>{const team=getTeam(universe,driver.teamId);return <div key={driver.id}><Flag driver={driver}/><span><b><L kind="driver" id={driver.id}>{driver.name}</L></b><small><L kind="team" id={team?.id}>{team?.name}</L></small></span><i><b style={{width:`${p/maxP*100}%`,background:teamColor(team)}}/></i><em>{value>=100?Math.round(value):value.toFixed(value>=10?1:2)}</em></div>;})}</div>:<p>No odds available.</p>}
         <p className="model-note">Decimal odds from driver rating, car fit for this circuit, last-five form and championship position.</p>
       </Panel>:<Panel title="Win odds" eyebrow="REPLAY"><p>Odds are only shown before a live weekend, while the result is still unknown.</p></Panel>}
       <Panel title="Last year here" eyebrow={last?`YEAR ${last.year>=2000?Math.max(1,last.year-2025):last.year}`:'HISTORY'}>
-        {last?<div className="gpw-list">{(last.podium||[]).map((item)=><div key={item.driverId}><strong>P{item.position}</strong><span><b>{name(item.driverId)}</b><small>{getTeam(universe,item.teamId)?.name||''}</small></span></div>)}
-          <div><strong>Pole</strong><span><b>{last.poleId?name(last.poleId):'—'}</b></span></div>
-          <div><strong>FL</strong><span><b>{last.fastestLapDriverId?name(last.fastestLapDriverId):'—'}</b><small>{lap(last.fastestLapTime)}</small></span></div>
+        {last?<div className="gpw-list">{(last.podium||[]).map((item)=><div key={item.driverId}><strong>P{item.position}</strong><span><b><L kind="driver" id={item.driverId}>{name(item.driverId)}</L></b><small><L kind="team" id={item.teamId}>{getTeam(universe,item.teamId)?.name||''}</L></small></span></div>)}
+          <div><strong>Pole</strong><span><b>{last.poleId?<L kind="driver" id={last.poleId}>{name(last.poleId)}</L>:'—'}</b></span></div>
+          <div><strong>FL</strong><span><b>{last.fastestLapDriverId?<L kind="driver" id={last.fastestLapDriverId}>{name(last.fastestLapDriverId)}</L>:'—'}</b><small>{lap(last.fastestLapTime)}</small></span></div>
         </div>:<p>First edition.</p>}
       </Panel>
-      {pre&&<Panel title="Championship" eyebrow="BEFORE THIS RACE">
-        <div className="gpw-list">{drivers.map((driver,i)=><div key={driver.id}><strong>P{i+1}</strong><span><b>{driver.name}</b><small>{getTeam(universe,driver.teamId)?.name}</small></span><em>{driver.season.points}{drivers[0].season.points>driver.season.points?<small className="gap"> −{drivers[0].season.points-driver.season.points}</small>:null}</em></div>)}</div>
-        <div className="gpw-list teams">{teams.map((team,i)=><div key={team.id}><strong>P{i+1}</strong><span><b>{team.name}</b></span><em>{team.seasonPoints}{teams[0].seasonPoints>team.seasonPoints?<small className="gap"> −{teams[0].seasonPoints-team.seasonPoints}</small>:null}</em></div>)}</div>
+      {pre&&<Panel title="Championship" eyebrow="BEFORE THIS RACE" action={<L kind="series" id="F1" className="link">Standings ›</L>}>
+        <div className="gpw-list">{drivers.map((driver,i)=><div key={driver.id}><strong>P{i+1}</strong><span><b><L kind="driver" id={driver.id}>{driver.name}</L></b><small><L kind="team" id={driver.teamId}>{getTeam(universe,driver.teamId)?.name}</L></small></span><em>{driver.season.points}{drivers[0].season.points>driver.season.points?<small className="gap"> −{drivers[0].season.points-driver.season.points}</small>:null}</em></div>)}</div>
+        <div className="gpw-list teams">{teams.map((team,i)=><div key={team.id}><strong>P{i+1}</strong><span><b><L kind="team" id={team.id}>{team.name}</L></b></span><em>{team.seasonPoints}{teams[0].seasonPoints>team.seasonPoints?<small className="gap"> −{teams[0].seasonPoints-team.seasonPoints}</small>:null}</em></div>)}</div>
       </Panel>}
     </div>
     <NextButton label="Go to qualifying ›" onClick={next}/>
@@ -112,7 +113,7 @@ function QualiRound({universe,rows,cut,combined,round,reveal,Flag}){
         {cut!=null&&index===cut&&<div className="quali-cut" role="separator"><span>{round} cut · P{cut}</span></div>}
         <div role="row" className={`gpw-qrow ${visible?'shown':'hidden'} ${out?'out':''} ${pole&&visible?'pole':''}`}>
           <strong>{index+1}</strong>
-          {visible?<><span className="gpw-qdriver"><i style={{background:teamColor(team)}}/><Flag driver={driver}/><b>{driver?.name||'Unknown'}</b></span>
+          {visible?<><span className="gpw-qdriver"><i style={{background:teamColor(team)}}/><Flag driver={driver}/><b><L kind="driver" id={driver?.id}>{driver?.name||'Unknown'}</L></b></span>
             <em>{lap(row.time)}</em><small>{out?(info?.reason||`Out in ${round}`):pole?'Pole':index===0?'Fastest':row.gap}</small></>
           :<span className="gpw-qdriver"><b>…</b></span>}
         </div>
@@ -121,9 +122,12 @@ function QualiRound({universe,rows,cut,combined,round,reveal,Flag}){
   </div>;
 }
 
+const qualiMemory=new Map();
 function Qualifying({universe,record,ui,next}){
-  const {Flag,Panel,QualifyingTable}=ui;
-  const [tab,setTab]=useState('Q1');const [done,setDone]=useState(()=>new Set());
+  const {Flag,Panel,QualifyingTable}=ui;const links=useLinks();
+  const memory=qualiMemory.get(record.id);
+  const [tab,setTab]=useState(memory?.tab||'Q1');const [done,setDone]=useState(()=>new Set(memory?.done||[]));
+  useEffect(()=>{qualiMemory.set(record.id,{tab,done:[...done]});},[tab,done,record.id]);
   const reduced=prefersReducedMotion();
   const combinedRows=record.sessions.QUALI?.rows||[];
   const cuts=record.sessions.QUALI?.cuts||qualifyingCuts(combinedRows.length);
@@ -143,23 +147,23 @@ function Qualifying({universe,record,ui,next}){
       <QualiRound universe={universe} rows={rows} cut={cut} combined={combined} round={tab} reveal={reveal} Flag={Flag}/>
     </Panel>
     {q3Done&&<Panel title="Starting grid" eyebrow={pole?`POLE: ${pole.name.toUpperCase()}`:'GRID'}>
-      {pole&&<p className="gpw-pole"><Flag driver={pole}/> <b>{pole.name}</b> starts from pole for {getTeam(universe,pole.teamId)?.name}.</p>}
-      <QualifyingTable universe={universe} session={record.sessions.QUALI} openDriver={()=>{}}/>
+      {pole&&<p className="gpw-pole"><Flag driver={pole}/> <b><L kind="driver" id={pole.id}>{pole.name}</L></b> starts from pole for <L kind="team" id={pole.teamId}>{getTeam(universe,pole.teamId)?.name}</L>.</p>}
+      <QualifyingTable universe={universe} session={record.sessions.QUALI} openDriver={(id)=>links?.can('driver',id)&&links.open('driver',id)}/>
     </Panel>}
     {tab!=='Q3'?<NextButton label={`${tab==='Q1'?'Q2':'Q3'} ›`} onClick={()=>setTab(tab==='Q1'?'Q2':'Q3')}/>:<NextButton label={record.sessions.S?'Sprint ›':'Lights out ›'} onClick={next}/>}
   </>;
 }
 
 function Sprint({universe,record,ui,next}){
-  const {Panel,QualifyingTable,RaceResultTable}=ui;
+  const {Panel,QualifyingTable,RaceResultTable}=ui;const links=useLinks();const openDriver=(id)=>links?.can('driver',id)&&links.open('driver',id);
   const replay=hasReplay(record.sessions.S);
   const [view,setView]=useState('SQ');
   const sprintRecord=useMemo(()=>({...record,sessions:{R:record.sessions.S}}),[record]);
   return <>
     <div className="gpw-hero slim"><small>SPRINT</small><h1>{record.event?.name}</h1></div>
     <div className="tab-row gpw-tabs">{[['SQ','Sprint qualifying'],['S','Sprint result'],...(replay?[['W','Watch sprint']]:[])].map(([key,label])=><button key={key} className={`pill ${view===key?'active':''}`} onClick={()=>setView(key)}>{label}</button>)}</div>
-    {view==='SQ'&&<Panel title="Sprint qualifying" eyebrow="SPRINT GRID">{record.sessions.SQUALI?<QualifyingTable universe={universe} session={record.sessions.SQUALI} openDriver={()=>{}}/>:<p>No sprint qualifying data.</p>}</Panel>}
-    {view==='S'&&<Panel title="Sprint" eyebrow="RESULT"><RaceResultTable universe={universe} session={record.sessions.S} openDriver={()=>{}}/></Panel>}
+    {view==='SQ'&&<Panel title="Sprint qualifying" eyebrow="SPRINT GRID">{record.sessions.SQUALI?<QualifyingTable universe={universe} session={record.sessions.SQUALI} openDriver={openDriver}/>:<p>No sprint qualifying data.</p>}</Panel>}
+    {view==='S'&&<Panel title="Sprint" eyebrow="RESULT"><RaceResultTable universe={universe} session={record.sessions.S} openDriver={openDriver}/></Panel>}
     {view==='W'&&<LiveRace universe={universe} record={sprintRecord} series="F1" pending={false} onBack={()=>setView('S')}/>}
     <NextButton label="Lights out ›" onClick={next}/>
   </>;
@@ -189,17 +193,17 @@ function PostRace({universe,before,record,ui,actions}){
   return <>
     <div className="gpw-hero winner" style={{'--team':teamColor(winnerTeam)}}>
       <small>WINNER · {record.event?.name?.toUpperCase()}</small>
-      <h1><Flag driver={winner}/> {winner?.name||'—'}</h1>
-      <p>{winnerTeam?.name}{winner?.career?` · ${winner.career.f1Wins||1} career ${winner.career.f1Wins===1?'win':'wins'} · ${winner.season?.wins||1} this season`:''}</p>
+      <h1><Flag driver={winner}/> <L kind="driver" id={winner?.id}>{winner?.name||'—'}</L></h1>
+      <p><L kind="team" id={winnerTeam?.id}>{winnerTeam?.name}</L>{winner?.career?` · ${winner.career.f1Wins||1} career ${winner.career.f1Wins===1?'win':'wins'} · ${winner.season?.wins||1} this season`:''}</p>
     </div>
-    <div className="gpw-podium">{(record.podium||[]).map((item)=>{const driver=getDriver(universe,item.driverId);const team=getTeam(universe,item.teamId);return <div key={item.driverId} className={`p${item.position}`} style={{'--team':teamColor(team)}}><strong>P{item.position}</strong><b>{driver?.name}</b><small>{team?.name}</small></div>;})}</div>
+    <div className="gpw-podium">{(record.podium||[]).map((item)=>{const driver=getDriver(universe,item.driverId);const team=getTeam(universe,item.teamId);return <div key={item.driverId} className={`p${item.position}`} style={{'--team':teamColor(team)}}><strong>P{item.position}</strong><b><L kind="driver" id={driver?.id}>{driver?.name}</L></b><small><L kind="team" id={team?.id}>{team?.name}</L></small></div>;})}</div>
     <div className="gpw-facts">
-      <div><small>FASTEST LAP</small><b>{fastest?.name||'—'}</b><span>{lap(record.fastestLapTime)}</span></div>
-      {dotdDriver&&<div><small>DRIVER OF THE DAY</small><b>{dotdDriver.name}</b><span>{dotd.gained>0?`+${dotd.gained} places · `:''}{dotd.position?`P${dotd.position}`:'DNF'}</span></div>}
+      <div><small>FASTEST LAP</small><b><L kind="driver" id={fastest?.id}>{fastest?.name||'—'}</L></b><span>{lap(record.fastestLapTime)}</span></div>
+      {dotdDriver&&<div><small>DRIVER OF THE DAY</small><b><L kind="driver" id={dotdDriver.id}>{dotdDriver.name}</L></b><span>{dotd.gained>0?`+${dotd.gained} places · `:''}{dotd.position?`P${dotd.position}`:'DNF'}</span></div>}
     </div>
     <div className="gpw-grid two">
-      <Panel title="Drivers" eyebrow={before?'STANDINGS AFTER THIS RACE':'CURRENT STANDINGS'}><div className="gpw-list">{drivers.map(({driver,gained,move:m,i})=><div key={driver.id}><strong>P{i+1}</strong><span><b>{driver.name}</b><small>{getTeam(universe,driver.teamId)?.name}</small></span><em>{driver.season.points}<small> +{gained}</small></em>{move(m)}</div>)}</div></Panel>
-      <Panel title="Teams" eyebrow={before?'STANDINGS AFTER THIS RACE':'CURRENT STANDINGS'}><div className="gpw-list">{teams.map(({team,gained,move:m,i})=><div key={team.id}><strong>P{i+1}</strong><span><b>{team.name}</b></span><em>{team.seasonPoints}<small> +{gained}</small></em>{move(m)}</div>)}</div></Panel>
+      <Panel title="Drivers" eyebrow={before?'STANDINGS AFTER THIS RACE':'CURRENT STANDINGS'} action={<L kind="series" id="F1" className="link">Championship ›</L>}><div className="gpw-list">{drivers.map(({driver,gained,move:m,i})=><div key={driver.id}><strong>P{i+1}</strong><span><b><L kind="driver" id={driver.id}>{driver.name}</L></b><small><L kind="team" id={driver.teamId}>{getTeam(universe,driver.teamId)?.name}</L></small></span><em>{driver.season.points}<small> +{gained}</small></em>{move(m)}</div>)}</div></Panel>
+      <Panel title="Teams" eyebrow={before?'STANDINGS AFTER THIS RACE':'CURRENT STANDINGS'} action={<L kind="series" id="F1" className="link">Championship ›</L>}><div className="gpw-list">{teams.map(({team,gained,move:m,i})=><div key={team.id}><strong>P{i+1}</strong><span><b><L kind="team" id={team.id}>{team.name}</L></b></span><em>{team.seasonPoints}<small> +{gained}</small></em>{move(m)}</div>)}</div></Panel>
     </div>
     {stories.length>0&&<Panel title="Headlines" eyebrow="FROM THIS RACE"><div className="gpw-stories">{stories.map((story)=><article key={story.id}><small>{story.category}</small><b>{story.headline}</b><p>{story.dek}</p></article>)}</div></Panel>}
     <div className="gpw-next actions"><button className="outline" onClick={actions.fullResults}>Full results</button>{actions.nextGP&&<button className="primary" onClick={actions.nextGP} disabled={actions.busy}>Next GP ›</button>}<button className="outline" onClick={actions.home}>Back to Home</button></div>
@@ -220,7 +224,7 @@ export function GrandPrixWeekend({universe,live,step,go,onCommit,onSkip,actions,
   const timer=useRef(null);
   useEffect(()=>{if(current==='post'&&live?.pending)onCommit();},[current,live?.pending]);
   useEffect(()=>()=>window.clearTimeout(timer.current),[current]);
-  useEffect(()=>{window.scrollTo?.({top:0});},[current]);
+  useEffect(()=>{restoreScroll();},[current]);
   if(!record)return <section className="page"><div className="empty"><b>F1</b><h3>No weekend open</h3><p>Use Next GP to simulate up to the next Grand Prix and follow the weekend.</p></div></section>;
   const viewUniverse=live.pending||universe;
   const preUniverse=live.before;

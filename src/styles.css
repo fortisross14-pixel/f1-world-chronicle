@@ -181,3 +181,11 @@
 @media(max-width:500px){.ps-rows>div,.ps-rows>div:has(.series-tag){grid-template-columns:auto minmax(0,1fr) auto auto}.ps-rows.staff>div{grid-template-columns:minmax(0,1fr) auto}.ps-champs>div{grid-template-columns:40px minmax(0,1fr)}.ps-champs>div>small{grid-column:2}}
 .ps-page .gpw-list span b{display:flex;align-items:center;gap:6px;min-width:0}.ps-page .gpw-list .flag{min-width:0}.ps-page .gpw-list .flag small{display:none}
 .gpw-top-next{flex:none;white-space:nowrap}@media(max-width:500px){.gpw-skip span{display:none}.gpw-top-next{padding:7px 12px;font-size:12px}}
+/* tappable names in the weekend and post-season flows */
+.entity-link{border:0;background:none;padding:0;margin:0;font:inherit;color:inherit;text-align:inherit;cursor:pointer;text-decoration:underline;text-decoration-color:#ffffff40;text-underline-offset:3px;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:inherit;vertical-align:baseline}
+.entity-link:hover,.entity-link:focus-visible{text-decoration-color:currentColor;color:#fff}
+.entity-link.link{color:#ff706b;text-decoration:none;font-weight:800;white-space:nowrap;flex:none}.entity-link.gpw-tag{text-decoration:none}
+.gpw-podium .entity-link,.gpw-list span .entity-link,.gpw-odds span .entity-link{display:block;white-space:nowrap}
+.gpw-list span b .entity-link{display:inline;white-space:nowrap}
+.ps-champs .ps-who{display:flex;align-items:center;gap:6px;min-width:0}.ps-champs .ps-who b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ps-hof>div{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.ps-hof>div span{color:#c4c4cd;font-size:14px}.ps-leader{cursor:default}

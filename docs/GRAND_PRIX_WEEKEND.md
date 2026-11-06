@@ -51,6 +51,13 @@ odds_i   = 1 / p_i   (decimal, no bookmaker margin)
 
 The top 8 are shown with a bar scaled to the favourite.
 
+## Links
+
+Driver, team and championship names in Pre-race, Qualifying, Sprint and Post-race open their pages (`src/Links.jsx`).
+Linked pages show the committed world, so a pending result never leaks. Back returns to the same step and scroll position
+(Qualifying also keeps its tab), and the race stays pending. A pending weekend is only resumed while the world has not moved
+on since it was opened. If you sim time elsewhere, the weekend is dropped and Next GP starts fresh.
+
 ## Routes
 
 `#/weekend/<eventId>/<step>` with step `pre | quali | sprint | race | post`.
