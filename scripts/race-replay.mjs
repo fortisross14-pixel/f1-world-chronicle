@@ -56,6 +56,7 @@ const summary = [];
 const lowTracks = [];
 const highTracks = [];
 const midTracks = [];
+let f1Races = 0, scRaces = 0, vscRaces = 0;
 for (const seed of [17, 2026]) {
   let universe = simulateToSeasonEnd(createUniverse(seed));
   assert.equal(universe.phase, 'Season complete');
@@ -64,6 +65,16 @@ for (const seed of [17, 2026]) {
     checkReplay(`F1 ${seed} ${record.eventId}`, race, race.laps);
     const sprint = record.sessions.S;
     if (sprint?.snapshots) checkReplay(`F1 sprint ${seed} ${record.eventId}`, sprint, sprint.laps);
+    f1Races += 1; if (race.safetyCar) scRaces += 1; if (race.virtualSafetyCar) vscRaces += 1;
+    // Qualifying: six out in Q1, six out in Q2, each with a reason and the right times.
+    const quali = record.sessions.QUALI;
+    if (quali) {
+      const field = quali.rows.length;
+      assert.equal(quali.rows.filter((row) => row.eliminatedIn === 'Q1').length, Math.min(6, field - 10), `${record.eventId}: Q1 must eliminate field - 16 cars`);
+      assert.equal(quali.rows.filter((row) => row.eliminatedIn === 'Q2').length, Math.max(0, Math.min(6, field - 6 - 10)), `${record.eventId}: Q2 must eliminate down to 10`);
+      assert.ok(quali.rows.every((row) => (row.eliminatedIn ? Boolean(row.reason) : row.q3Time != null) && row.q1Time != null), `${record.eventId}: qualifying rows need times and elimination reasons`);
+    }
+    assert.ok(Array.isArray(race.events), `${record.eventId}: race events must be stored`);
     const overtake = record.event.traits.overtake;
     assert.ok(race.overtakes <= 130, `${record.eventId}: ${race.overtakes} overtakes is unrealistic`);
     if (overtake < 40) lowTracks.push(race.overtakes);
@@ -75,6 +86,8 @@ for (const seed of [17, 2026]) {
       const race = record.sessions.R;
       const finalLap = race.snapshots.at(-1).lap;
       checkReplay(`${series} ${seed} ${record.eventId}`, race, finalLap);
+      assert.ok(Array.isArray(race.events), `${series} races must produce events`);
+      assert.ok(record.sessions.QUALI?.rows?.length === record.sessions.Q1.rows.length, `${series} needs a combined qualifying grid`);
     }
   }
   const replayBytes = JSON.stringify(universe.competitionEventResults.F1.map((record) => [record.sessions.R.snapshots, record.sessions.R.moments, record.sessions.S?.snapshots, record.sessions.S?.moments])).length;
@@ -110,6 +123,9 @@ const lowMean = mean(lowTracks);
 const highMean = mean(highTracks);
 const midMean = mean(midTracks);
 const allMean = mean([...lowTracks, ...midTracks, ...highTracks]);
+const scRate = scRaces / f1Races, vscRate = vscRaces / f1Races;
+assert.ok(scRate >= 0.2 && scRate <= 0.75, `Safety Car rate should be plausible (20–75% of races), got ${(scRate * 100).toFixed(0)}%`);
+assert.ok(vscRate >= 0.1 && vscRate <= 0.65, `VSC rate should be plausible (10–65% of races), got ${(vscRate * 100).toFixed(0)}%`);
 assert.ok(allMean >= 15 && allMean <= 60, `Average overtakes per race should be 15–60, got ${allMean.toFixed(1)}`);
 assert.ok(highMean >= 25 && highMean <= 70, `High-overtake circuits should average 25–70 passes, got ${highMean.toFixed(1)}`);
 assert.ok(lowMean <= highMean * 0.5, `Monaco-like circuits need far fewer passes (${lowMean.toFixed(1)} vs ${highMean.toFixed(1)})`);
@@ -117,6 +133,7 @@ assert.ok(lowMean >= 3, `Even tight circuits should see some passing, got ${lowM
 
 console.log('Race replay validation passed:', {
   seasons: summary,
+  neutralisations: { safetyCar: `${Math.round(scRate * 100)}%`, vsc: `${Math.round(vscRate * 100)}%` },
   overtakesPerRace: { lowOvertakeTracks: Number(lowMean.toFixed(1)), midTracks: Number(midMean.toFixed(1)), highOvertakeTracks: Number(highMean.toFixed(1)), all: Number(allMean.toFixed(1)) },
 });
 

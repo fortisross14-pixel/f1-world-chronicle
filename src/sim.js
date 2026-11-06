@@ -259,22 +259,35 @@ function qualifyingRun(universe,event,drivers,weather,temperature,roundName,rng,
     const deleted=rng.chance(clamp((96-effectiveDriverSkill(driver,'consistency'))/850,0.003,.045));
     const oneLapForm=centeredPerformanceSwing(rng,1.55)*(1.2-competitionSkill(driver,'consistency',.76)/270);
     const score=carFit(universe,team,event,'qualifying')*.46+driverLevel(driver,'oneLap',weather)*.39+competitionSkill(driver,'composure',.7)*.04+driverCircuitSpecialtyScore(driver,event,weather)*1.15+thermalDriverScore(driver,temperature)*.65+runTiming+trackEvolution-trafficPenalty+oneLapForm+raceEngineerBoost(universe,driver)+(rng.next()-.5)*2.6;
-    return {driverId:driver.id,teamId:team.id,score,time:lapTimeFromScore(score,event,'Qualifying',rng)+(deleted?.75:0),deleted,compound:'Soft'};
+    return {driverId:driver.id,teamId:team.id,score,time:lapTimeFromScore(score,event,'Qualifying',rng)+(deleted?.75:0),deleted,traffic:trafficPenalty>.6,compound:'Soft'};
   }).sort((a,b)=>a.time-b.time);
   const leader=rows[0].time;
   rows.forEach((row,index)=>{ row.position=index+1;row.gap=index===0?'—':`+${(row.time-leader).toFixed(3)}`;row.advanced=index<cut; });
   return rows;
 }
 
+export function qualifyingCuts(field){const q1Cut=Math.max(10,field-6);return{q1Cut,q2Cut:Math.min(10,q1Cut)};}
+function eliminationReason(row,round,cutTime){
+  if(row.deleted)return`Out in ${round}: lap deleted for track limits`;
+  if(row.traffic)return`Out in ${round}: lost time in traffic`;
+  return`Out in ${round}: ${Math.max(0,row.time-cutTime).toFixed(3)}s off the cut`;
+}
+// Final grid with every driver's Q1/Q2/Q3 time and, for those knocked out, where and why.
+function combineQualifying(q1,q2,q3,q1Cut,q2Cut){
+  const times=(rows,key)=>new Map(rows.map((row)=>[row.driverId,Number(row.time.toFixed(3))]));
+  const t1=times(q1),t2=times(q2),t3=times(q3);
+  const out=(rows,cut,round)=>rows.slice(cut).sort((a,b)=>a.time-b.time).map((row)=>({...row,eliminatedIn:round,reason:eliminationReason(row,round,rows[cut-1]?.time??row.time)}));
+  return[...q3.map((row)=>({...row,eliminatedIn:null,reason:null})),...out(q2,q2Cut,'Q2'),...out(q1,q1Cut,'Q1')].map((row,index)=>({...row,position:index+1,q1Time:t1.get(row.driverId)??null,q2Time:t2.get(row.driverId)??null,q3Time:t3.get(row.driverId)??null}));
+}
 function simulateQualifying(universe,event,session,rng) {
   const all=currentF1Drivers(universe);
   const weather=session.weather.state;
-  const q1=qualifyingRun(universe,event,all,weather,session.weather.temperature,'Q1',rng,15);
-  const q2=qualifyingRun(universe,event,q1.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId)),weather,session.weather.temperature,'Q2',rng,10);
-  const q3=qualifyingRun(universe,event,q2.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId)),weather,session.weather.temperature,'Q3',rng,10);
-  const eliminatedQ1=q1.slice(15).sort((a,b)=>a.time-b.time);
-  const eliminatedQ2=q2.slice(10).sort((a,b)=>a.time-b.time);
-  const final=[...q3,...eliminatedQ2,...eliminatedQ1].map((row,index)=>({...row,position:index+1}));
+  // Six cars drop out in Q1 and six in Q2: with 22 cars the cuts are P16 and P10.
+  const {q1Cut,q2Cut}=qualifyingCuts(all.length);
+  const q1=qualifyingRun(universe,event,all,weather,session.weather.temperature,'Q1',rng,q1Cut);
+  const q2=qualifyingRun(universe,event,q1.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId)),weather,session.weather.temperature,'Q2',rng,q2Cut);
+  const q3=qualifyingRun(universe,event,q2.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId)),weather,session.weather.temperature,'Q3',rng,q2Cut);
+  const final=combineQualifying(q1,q2,q3,q1Cut,q2Cut);
   const pole=getDriver(universe,final[0].driverId); pole.season.poles+=1; pole.season.qualifyingPoints+=25; pole.career.f1Poles+=1; const poleTeam=getTeam(universe,pole.teamId); if(poleTeam){poleTeam.season.poles+=1;poleTeam.career.poles+=1;}
   final.slice(1).forEach((row,index)=>{const d=getDriver(universe,row.driverId);d.season.qualifyingPoints+=Math.max(0,18-index);});
   const wetStar=weather!=='Dry'?[...final].slice(0,6).sort((a,b)=>effectiveDriverSkill(getDriver(universe,b.driverId),'wet')-effectiveDriverSkill(getDriver(universe,a.driverId),'wet'))[0]:null;
@@ -437,7 +450,7 @@ function simulateRace(universe,event,session,rng,isSprint=false) {
   if(biggestGain && biggestGain.grid-biggestGain.position>=6) biggestGain.tags.push('Comeback drive');
   const weatherChanged=new Set(timeline).size>1;
   scoreMoments(race.moments,contextBefore);
-  return {kind:isSprint?'Sprint':'Race',rows:sorted,grid,timeline,laps,safetyCar,virtualSafetyCar,redFlag,teamOrders,fastestLapDriverId:fastest?.driverId||null,fastestLapTime,events:raceEvents.slice(0,24),headline:`${winner.name} wins ${isSprint?'the Sprint':`the ${event.country} Grand Prix`}${weatherChanged?' after changing conditions':''}`,winnerId:winner.id,
+  return {kind:isSprint?'Sprint':'Race',rows:sorted,grid,timeline,laps,safetyCar,virtualSafetyCar,redFlag,teamOrders,fastestLapDriverId:fastest?.driverId||null,fastestLapTime,events:raceEvents.slice(0,40),headline:`${winner.name} wins ${isSprint?'the Sprint':`the ${event.country} Grand Prix`}${weatherChanged?' after changing conditions':''}`,winnerId:winner.id,
     replayVersion:REPLAY_VERSION,snapshots:race.snapshots,moments:race.moments,overtakes:race.overtakes,failedAttacks:race.failedAttacks,contacts:race.contacts};
 }
 
@@ -611,19 +624,19 @@ function simulateSupportRace(universe,series,event,drivers,teams,grid,weather,rn
   if(fastest){universe.records.fastestLaps.unshift({year:universe.year,series,round:event.round,eventId:event.id,circuitId:event.circuitId||event.id,driverId:fastest.driverId,driverName:getDriver(universe,fastest.driverId)?.name,time:fastestLapTime});universe.records.fastestLaps=universe.records.fastestLaps.slice(0,240);}
   scoreMoments(race.moments,contextBefore);
   return{key:'R',label:wec?'Endurance Race':'Race',weather:weather.state,temperature:weather.temperature,thermal:weather.thermal,timeline,laps,rows,winnerId:rows[0]?.driverId,fastestLapDriverId:fastest?.driverId||null,fastestLapTime,
-    safetyCar:race.flags.safetyCar,virtualSafetyCar:race.flags.virtualSafetyCar,redFlag:race.flags.redFlag,replayVersion:REPLAY_VERSION,stepLaps,snapshots:race.snapshots,moments:race.moments,overtakes:race.overtakes};
+    safetyCar:race.flags.safetyCar,virtualSafetyCar:race.flags.virtualSafetyCar,redFlag:race.flags.redFlag,replayVersion:REPLAY_VERSION,stepLaps,snapshots:race.snapshots,moments:race.moments,overtakes:race.overtakes,events:race.events.slice(0,30)};
 }
 function simulateFeederRound(universe,series,seed){
   const results=universe.competitionEventResults?.[series]||[];const calendar=universe.competitionCalendars?.[series]||[];const event=calendar[results.length];if(!event)return null;
   const rng=makeRng(seed+series.charCodeAt(1)*271+event.round*919);const drivers=universe.drivers.filter((driver)=>driver.series===series&&driver.role==='Race driver'&&driver.active);const teams=universe.feederTeams[series]||[];
   const fp1Weather=weatherForSession(event,'FP1',rng);const fp2Weather=weatherForSession(event,'FP2',rng);const qWeather=weatherForSession(event,'Q',rng);const raceWeather=weatherForSession(event,'R',rng);
   const fp1=simulateSupportPractice(universe,series,event,drivers,teams,fp1Weather,rng,'FP1');const fp2=simulateSupportPractice(universe,series,event,drivers,teams,fp2Weather,rng,'FP2');
-  const q1Cut=Math.max(10,drivers.length-5);const q2Cut=Math.max(8,Math.min(12,q1Cut-5));const q3Cut=Math.min(10,q2Cut);
+  const {q1Cut,q2Cut}=qualifyingCuts(drivers.length);const q3Cut=q2Cut;
   const q1=supportQualifyingRound(universe,event,drivers,teams,qWeather,rng,'Q1',q1Cut);const q2Drivers=q1.rows.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId));const q2=supportQualifyingRound(universe,event,q2Drivers,teams,qWeather,rng,'Q2',q2Cut);const q3Drivers=q2.rows.filter((row)=>row.advanced).map((row)=>getDriver(universe,row.driverId));const q3=supportQualifyingRound(universe,event,q3Drivers,teams,qWeather,rng,'Q3',q3Cut);
-  const finalQualifying=[...q3.rows,...q2.rows.slice(q2Cut),...q1.rows.slice(q1Cut)].map((row,index)=>({...row,position:index+1}));const pole=getDriver(universe,finalQualifying[0]?.driverId);if(pole){pole.season.poles=(pole.season.poles||0)+1;const poleTeam=teams.find((team)=>team.id===pole.teamId);if(poleTeam){poleTeam.season=poleTeam.season||{points:0,wins:0,poles:0,podiums:0};poleTeam.season.poles=(poleTeam.season.poles||0)+1;}}
+  const finalQualifying=combineQualifying(q1.rows,q2.rows,q3.rows,q1Cut,q2Cut);const pole=getDriver(universe,finalQualifying[0]?.driverId);if(pole){pole.season.poles=(pole.season.poles||0)+1;const poleTeam=teams.find((team)=>team.id===pole.teamId);if(poleTeam){poleTeam.season=poleTeam.season||{points:0,wins:0,poles:0,podiums:0};poleTeam.season.poles=(poleTeam.season.poles||0)+1;}}
   const race=simulateSupportRace(universe,series,event,drivers,teams,finalQualifying.map((row)=>row.driverId),raceWeather,rng);const winner=getDriver(universe,race.winnerId);const winnerTeam=getTeam(universe,winner?.teamId);
   if(winnerTeam)(winnerTeam.staffIds||[]).map((id)=>getStaff(universe,id)).filter(Boolean).forEach((member)=>{member.wins=(member.wins||0)+1;});
-  const record={id:`${universe.year}-${series}-${event.round}`,year:universe.year,series,eventId:event.id,circuitId:event.circuitId||event.id,round:event.round,event:{id:event.id,circuitId:event.circuitId||event.id,country:event.country,city:event.city,name:event.name,traits:event.traits,rain:event.rain,temp:event.temp},sessions:{FP1:fp1,FP2:fp2,Q1:q1,Q2:q2,Q3:q3,R:race},winnerId:winner?.id||null,teamWinnerId:winnerTeam?.id||null,poleId:pole?.id||null,podium:race.rows.slice(0,3).map((row)=>({driverId:row.driverId,teamId:row.teamId,position:row.position})),fastestLapDriverId:race.fastestLapDriverId,fastestLapTime:race.fastestLapTime,weather:{qualifying:qWeather.state,qualifyingTemperature:qWeather.temperature,race:raceWeather.state,raceTemperature:raceWeather.temperature,timeline:race.timeline}};
+  const record={id:`${universe.year}-${series}-${event.round}`,year:universe.year,series,eventId:event.id,circuitId:event.circuitId||event.id,round:event.round,event:{id:event.id,circuitId:event.circuitId||event.id,country:event.country,city:event.city,name:event.name,traits:event.traits,rain:event.rain,temp:event.temp},sessions:{FP1:fp1,FP2:fp2,QUALI:{key:'QUALI',label:'Qualifying',weather:qWeather.state,temperature:qWeather.temperature,thermal:qWeather.thermal,rows:finalQualifying,cuts:{q1Cut,q2Cut}},Q1:q1,Q2:q2,Q3:q3,R:race},winnerId:winner?.id||null,teamWinnerId:winnerTeam?.id||null,poleId:pole?.id||null,podium:race.rows.slice(0,3).map((row)=>({driverId:row.driverId,teamId:row.teamId,position:row.position})),fastestLapDriverId:race.fastestLapDriverId,fastestLapTime:race.fastestLapTime,weather:{qualifying:qWeather.state,qualifyingTemperature:qWeather.temperature,race:raceWeather.state,raceTemperature:raceWeather.temperature,timeline:race.timeline}};
   universe.competitionEventResults[series].push(record);updateRivalriesAfterRace(universe,record,{story:(story)=>createStory(universe,{...story,round:story.round??event.round})});universe.feederResults[series].push({year:universe.year,round:event.round,eventId:event.id,rows:race.rows,winnerId:record.winnerId});event.status='Complete';
   evaluateDriverMindAfterRace(universe,series,event,race,mindRngFor(universe,series,event));
   if(winner)createStory(universe,{category:'World Results',headline:`${winner.name} wins the ${event.name} in ${series}`,dek:`${winnerTeam?.name||'The winning entrant'} converted P${race.rows[0]?.grid||'—'} on the grid into victory. ${race.timeline.some((state)=>state!=='Dry')?'Changing conditions made wet skill and strategy decisive.':`${winner.trackSpecialty} suited the circuit profile.`}`,priority:series==='F2'?74:60,subjects:[winner.id,winnerTeam?.id].filter(Boolean),round:event.round});
@@ -660,6 +673,9 @@ function buildF1EventRecord(universe,event,raceResult){
     sessions.SQ3=session('SQ3','Sprint Qualifying 3',byKey.SQ.data?.rounds?.Q3,byKey.SQ.weather);
   }
   if(byKey.S)sessions.S=session('S','Sprint',byKey.S.data?.rows,byKey.S.weather,{timeline:byKey.S.data?.timeline,laps:byKey.S.data?.laps,replayVersion:byKey.S.data?.replayVersion,snapshots:byKey.S.data?.snapshots,moments:byKey.S.data?.moments,overtakes:byKey.S.data?.overtakes});
+  // Combined grid: every driver's Q1/Q2/Q3 time and where they were knocked out.
+  if(byKey.Q)sessions.QUALI=session('QUALI','Qualifying',byKey.Q.data?.rows,byKey.Q.weather,{cuts:qualifyingCuts((byKey.Q.data?.rows||[]).length)});
+  if(byKey.SQ)sessions.SQUALI=session('SQUALI','Sprint Qualifying',byKey.SQ.data?.rows,byKey.SQ.weather,{cuts:qualifyingCuts((byKey.SQ.data?.rows||[]).length)});
   if(byKey.Q){
     sessions.Q1=session('Q1','Q1',byKey.Q.data?.rounds?.Q1,byKey.Q.weather);
     sessions.Q2=session('Q2','Q2',byKey.Q.data?.rounds?.Q2,byKey.Q.weather);
@@ -669,7 +685,7 @@ function buildF1EventRecord(universe,event,raceResult){
     sessions.Q2=session('Q2','Q2',byKey.SQ.data?.rounds?.Q2,byKey.SQ.weather);
     sessions.Q3=session('Q3','Q3',byKey.SQ.data?.rounds?.Q3,byKey.SQ.weather);
   }
-  sessions.R=session('R','Grand Prix',race.rows,byKey.R?.weather,{timeline:race.timeline,laps:race.laps,replayVersion:race.replayVersion,snapshots:race.snapshots,moments:race.moments,overtakes:race.overtakes,safetyCar:race.safetyCar,virtualSafetyCar:race.virtualSafetyCar,redFlag:race.redFlag});
+  sessions.R=session('R','Grand Prix',race.rows,byKey.R?.weather,{timeline:race.timeline,laps:race.laps,replayVersion:race.replayVersion,snapshots:race.snapshots,moments:race.moments,overtakes:race.overtakes,safetyCar:race.safetyCar,virtualSafetyCar:race.virtualSafetyCar,redFlag:race.redFlag,events:race.events,teamOrders:race.teamOrders});
   return{
     id:`${universe.year}-F1-${event.round}`,year:universe.year,series:'F1',eventId:event.id,circuitId:event.circuitId||event.id,round:event.round,
     event:{id:event.id,circuitId:event.circuitId||event.id,country:event.country,city:event.city,name:event.name,traits:event.traits,rain:event.rain,temp:event.temp},

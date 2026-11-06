@@ -202,6 +202,7 @@ export function runLapRace({
         doPit(s,lap,pit);
         if(flag==='vsc'&&rng.chance(.5))s.tags.push('VSC pit-stop gain');
         if(flag==='sc'&&rng.chance(.4))s.tags.push('Safety-car beneficiary');
+        if(slow||from<=6)events.push({lap:lap*stepLaps,type:'Pit stop',text:`${name(s.id)} pits from P${from} for ${pit}${slow?' (slow stop)':''}${flag==='sc'?' under the Safety Car':flag==='vsc'?' under the VSC':''}`});
         pushMoment({lap:lap*stepLaps,type:'pit',driverIds:[s.id],position:from,text:`${name(s.id)} pits from P${from} for ${pit}${slow?' — a slow stop':''}${flag==='sc'?' under the Safety Car':flag==='vsc'?' under the VSC':''}`,slow});
       }
       if(flag==='green'&&!pit&&lap>1&&lt<s.best){s.best=lt;s.bestLap=lap;}
@@ -215,7 +216,7 @@ export function runLapRace({
           const reason=rng.pick(['power unit failure','hydraulic failure','gearbox failure','electrical shutdown','overheating']);
           retire(s,lap,'Retirement',`${name(s.id)} retires with ${reason}`,'Mechanical DNF');
           pushMoment({lap:lap*stepLaps,type:'dnf',driverIds:[s.id],position:position.get(s.id),text:`${name(s.id)} retires from P${position.get(s.id)}: ${reason}`});
-          if(rng.chance(.35))deploy('vsc',lap,{ids:[s.id],text:`${name(s.id)} stops on track`});
+          if(rng.chance(.18))deploy('vsc',lap,{ids:[s.id],text:`${name(s.id)} stops on track`});
           return;
         }
         const incident=((s.e.incidentBase||.006)+(track!=='Dry'?.008:0))*8/laps*(lap===1?2.5:1)*incidentScale;
@@ -271,7 +272,7 @@ export function runLapRace({
               if(victim){
                 retire(victim,lap,'Incident',`${name(victim.id)} retires after contact with ${name(victim===c?ahead.id:c.id)}`,'Crash DNF');
                 pushMoment({lap:lap*stepLaps,type:'dnf',driverIds:[victim.id],position:position.get(victim.id),text:`${name(victim.id)} retires after the contact`});
-                if(rng.chance(.6))deploy('sc',lap,{ids:[victim.id],text:`debris after ${name(c.id)} and ${name(ahead.id)} collide`});else deploy('vsc',lap,{ids:[victim.id],text:'a damaged car is recovered'});
+                if(rng.chance(.6))deploy('sc',lap,{ids:[victim.id],text:`debris after ${name(c.id)} and ${name(ahead.id)} collide`});else if(rng.chance(.45))deploy('vsc',lap,{ids:[victim.id],text:'a damaged car is recovered'});
               }
               if(victim===ahead){F.pop();}
               if(victim!==c){
