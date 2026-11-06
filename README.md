@@ -110,13 +110,17 @@ Driver and team records use full pages with browser-history navigation rather th
 
 Team pages contain **Overview**, **Personnel**, **Finance** and **History** tabs. Their yearly history records team name, director, championship position, points, engine and both drivers with individual points and positions.
 
-A sticky world-time bar remains above the navigation on desktop and mobile. It always exposes **+1 week**, **+4 weeks** and **Year end**, then changes to **Move to next year** after all six championships finish. Next to them, **Next GP · <country>** runs the world up to the next F1 race and opens the Grand Prix weekend.
+A sticky world-time bar remains above the navigation on desktop and mobile. It always exposes **+1 week**, **+4 weeks** and **Year end**, then changes to **Season review** after all six championships finish. Next to them, **Next GP · <country>** runs the world up to the next F1 race and opens the Grand Prix weekend.
 
 The initial and off-season F1 markets enforce a minimum race-driver age of 21. A driver reaching F1 at 21 must be an elite prospect and begins on a reduced early-career multiplier rather than receiving peak skills immediately.
 
 ## Grand Prix weekend
 
 The **Next GP** button opens a guided weekend: **Pre-race** (forecast, win odds, last year here, standings) → **Qualifying** (Q1/Q2/Q3 reveal and starting grid) → optional **Sprint** → **Race** (Live Race) → **Post-race** (winner, podium, standings moves, headlines). The result stays hidden until Post-race or **Skip to result**. Completed races can be replayed with **Watch weekend**. Details: [docs/GRAND_PRIX_WEEKEND.md](docs/GRAND_PRIX_WEEKEND.md).
+
+## Post-season review
+
+When the season ends, a guided review opens: **Season summary** (champions, leaders, awards) → **Retirements & rookies** (Hall of Fame class, retirees, new prospects) → **Market** (driver and staff moves) → **Pre-season** (new form guide and round 1). The off-season is committed only by **Start Year X**, **Next GP ›** or **Skip review**. Details: [docs/POST_SEASON.md](docs/POST_SEASON.md).
 
 ## Race weekends and weather
 

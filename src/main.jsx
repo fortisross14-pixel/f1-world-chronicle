@@ -12,6 +12,7 @@ import {
 } from './sim.js';
 import { LiveRace } from './LiveRace.jsx';
 import { GrandPrixWeekend, weekendSteps } from './GrandPrixWeekend.jsx';
+import { PostSeason, POSTSEASON_STEPS } from './PostSeason.jsx';
 import { headToHead, rivalryFor, legacyScore, HALL_RULES } from './legacy.js';
 import { saveSlot, loadSlot, deleteSlot, listSlots, exportUniverse, importUniverse } from './storage.js';
 
@@ -80,10 +81,13 @@ function App(){
   const [busy,setBusy]=useState(false);
   const [live,setLive]=useState(null);
   const [weekendStep,setWeekendStep]=useState('pre');
+  const [review,setReview]=useState(null);
+  const [postStep,setPostStep]=useState('summary');
+  const phaseRef=useRef(null);const openReviewRef=useRef(null);
   const autosaveReady=useRef(false);
 
-  const applyRoute=(route={page:'home'})=>{if(route.page!=='live'&&route.page!=='weekend')setLive((current)=>current?.pending?null:current);if(route.page==='weekend')setWeekendStep(route.step||'pre');setPageState(route.page||'home');setSelectedDriverState(route.driver||null);setSelectedTeamState(route.team||null);setSelectedEventState(route.event||null);setSelectedStaffState(route.staff||null);setSelectedRivalryState(route.rivalry||null);};
-  const navigate=(route,replace=false)=>{const hash=route.driver?`#/driver/${route.driver}`:route.team?`#/team/${route.team}`:route.staff?`#/staff/${route.staff}`:route.event?`#/event/${route.event.series}/${route.event.eventId}`:route.rivalry?`#/rivalry/${route.rivalry.a}/${route.rivalry.b}`:route.page==='weekend'?`#/weekend/${route.eventId}/${route.step||'pre'}`:`#/${route.page||'home'}`;window.history[replace?'replaceState':'pushState'](route,'',hash);applyRoute(route);};
+  const applyRoute=(route={page:'home'})=>{if(route.page!=='live'&&route.page!=='weekend')setLive((current)=>current?.pending?null:current);if(route.page==='weekend')setWeekendStep(route.step||'pre');if(route.page==='postseason')setPostStep(route.step||'summary');setPageState(route.page||'home');setSelectedDriverState(route.driver||null);setSelectedTeamState(route.team||null);setSelectedEventState(route.event||null);setSelectedStaffState(route.staff||null);setSelectedRivalryState(route.rivalry||null);};
+  const navigate=(route,replace=false)=>{const hash=route.driver?`#/driver/${route.driver}`:route.team?`#/team/${route.team}`:route.staff?`#/staff/${route.staff}`:route.event?`#/event/${route.event.series}/${route.event.eventId}`:route.rivalry?`#/rivalry/${route.rivalry.a}/${route.rivalry.b}`:route.page==='postseason'?`#/postseason/${route.year}/${route.step||'summary'}`:route.page==='weekend'?`#/weekend/${route.eventId}/${route.step||'pre'}`:`#/${route.page||'home'}`;window.history[replace?'replaceState':'pushState'](route,'',hash);applyRoute(route);};
   const setPage=(id)=>navigate({page:id});
   const setSelectedDriver=(id)=>id&&navigate({driver:id});
   const setSelectedTeam=(id)=>id&&navigate({team:id});
@@ -95,9 +99,12 @@ function App(){
   useEffect(()=>{listSlots().then(setSlots).catch(()=>setSlots([]));const pop=(event)=>applyRoute(event.state||{page:'home'});window.addEventListener('popstate',pop);return()=>window.removeEventListener('popstate',pop);},[]);
   useEffect(()=>{if(!universe||!currentSlot||!universe.settings?.autoSave)return;if(!autosaveReady.current){autosaveReady.current=true;return;}const timer=window.setTimeout(()=>saveSlot(currentSlot,universe,universe.name||`Universe ${currentSlot}`).then(()=>listSlots().then(setSlots)).catch(()=>{}),800);return()=>window.clearTimeout(timer);},[universe,currentSlot]);
 
+  // Open the season review automatically when the season finishes (not on load, not mid-weekend).
+  useEffect(()=>{const phase=universe?.phase;const prev=phaseRef.current;phaseRef.current=phase?`${universe.year}:${phase}`:null;if(phase==='Season complete'&&prev?.startsWith(`${universe.year}:`)&&!prev.endsWith('Season complete')&&page!=='weekend')openReviewRef.current?.();},[universe?.phase,universe?.year]);
+
   const notify=(message)=>{setToast(message);window.setTimeout(()=>setToast(''),2600);};
-  const load=async(slot)=>{const data=await loadSlot(slot);if(!data)return;if((data.schemaVersion||0)<5){window.alert('This save uses an early schema that cannot be migrated safely.');return;}setUniverse(hydrateUniverse(data));setCurrentSlot(slot);navigate({page:'home'},true);autosaveReady.current=false;};
-  const create=async(slot,name)=>{const data=createUniverse((Date.now()+slot*101)%2147483000);data.name=name;await saveSlot(slot,data,name);setSlots(await listSlots());setUniverse(hydrateUniverse(data));setCurrentSlot(slot);navigate({page:'home'},true);autosaveReady.current=false;};
+  const load=async(slot)=>{phaseRef.current=null;setReview(null);const data=await loadSlot(slot);if(!data)return;if((data.schemaVersion||0)<5){window.alert('This save uses an early schema that cannot be migrated safely.');return;}setUniverse(hydrateUniverse(data));setCurrentSlot(slot);navigate({page:'home'},true);autosaveReady.current=false;};
+  const create=async(slot,name)=>{phaseRef.current=null;setReview(null);const data=createUniverse((Date.now()+slot*101)%2147483000);data.name=name;await saveSlot(slot,data,name);setSlots(await listSlots());setUniverse(hydrateUniverse(data));setCurrentSlot(slot);navigate({page:'home'},true);autosaveReady.current=false;};
   const importSave=async(file)=>{const data=await importUniverse(file);if((data.schemaVersion||0)<5){window.alert('This save uses an early schema that cannot be migrated safely.');return;}const empty=[1,2,3].find((slot)=>!slots.some((item)=>item.slot===slot));if(!empty){notify('Delete a slot before importing.');return;}data.name=data.name||'Imported universe';await saveSlot(empty,data,data.name);setSlots(await listSlots());setUniverse(hydrateUniverse(data));setCurrentSlot(empty);navigate({page:'home'},true);};
   const saveNow=async()=>{if(!universe||!currentSlot)return;await saveSlot(currentSlot,universe,universe.name||`Universe ${currentSlot}`);setSlots(await listSlots());notify(`Saved to Slot ${currentSlot}`);};
   const saveAndExit=async()=>{await saveNow();setUniverse(null);setCurrentSlot(null);applyRoute({page:'home'});autosaveReady.current=false;};
@@ -115,13 +122,14 @@ function App(){
   const season=()=>window.confirm('Simulate every remaining event in every championship? Showcase races you chose to watch will still stop the clock.')&&performWorld((u)=>simulateToSeasonEnd(u,{showcase:true}),'All championships completed');
   const nextF1=universe.currentRound<universe.calendar.length?universe.calendar[universe.currentRound]:null;
   // Guided weekend: simulate up to the race into a pending universe, then walk Pre-race → Post-race.
-  const openWeekend=(eventId)=>{
-    const existing=competitionResults(universe,'F1').find((record)=>record.eventId===eventId);
+  const openWeekend=(eventId,base=universe)=>{
+    const baseNext=base.currentRound<base.calendar.length?base.calendar[base.currentRound]:null;
+    const existing=competitionResults(base,'F1').find((record)=>record.eventId===eventId);
     if(existing){setLive({record:existing,series:'F1',pending:null,before:null,weekend:true});navigate({page:'weekend',eventId,step:'pre'});return;}
-    if(nextF1?.id!==eventId){notify('Only the next Grand Prix can be watched live.');return;}
-    const reason=pendingShowcase?.reason||showcaseReason(universe,nextF1);
+    if(baseNext?.id!==eventId){notify('Only the next Grand Prix can be watched live.');return;}
+    const reason=base.showcase?.pending?.reason||showcaseReason(base,baseNext);
     setBusy(true);
-    window.setTimeout(()=>{const before=universe;const pending=simulateThroughF1Event(universe,eventId);const record=pending.competitionEventResults.F1.find((item)=>item.eventId===eventId);setBusy(false);if(!record)return;setLive({record,series:'F1',pending,before,reason,reached:0,weekend:true});navigate({page:'weekend',eventId,step:'pre'});},35);
+    window.setTimeout(()=>{const before=base;const pending=simulateThroughF1Event(base,eventId);const record=pending.competitionEventResults.F1.find((item)=>item.eventId===eventId);setBusy(false);if(!record)return;setLive({record,series:'F1',pending,before,reason,reached:0,weekend:true});navigate({page:'weekend',eventId,step:'pre'});},35);
   };
   const nextGP=()=>{const id=pendingShowcase?.eventId||nextF1?.id;if(id)openWeekend(id);};
   const goStep=(step)=>{if(!live?.record)return;const index=weekendSteps(live.record).indexOf(step);setLive((current)=>current?{...current,reached:Math.max(current.reached||0,index)}:current);navigate({page:'weekend',eventId:live.record.eventId,step});};
@@ -138,14 +146,26 @@ function App(){
   const commitLive=()=>{if(live?.pending){setUniverse(live.pending);setLive((current)=>current?{...current,pending:null}:current);}};
   const skipLive=()=>{if(!live)return;const target={series:live.series,eventId:live.record.eventId,circuitId:live.record.circuitId};commitLive();navigate({event:target},true);notify('Result saved without watching.');};
   const skipShowcase=()=>{if(!pendingShowcase)return;performWorld((u)=>simulateThroughF1Event(u,pendingShowcase.eventId),`${pendingShowcase.name} result is in.`);};
-  const nextYear=()=>perform(advanceToNextSeason,`Welcome to ${yearLabel(universe.year+1)}`);
+  // Post-season review: pending = advanceToNextSeason(before), committed only by Start / Next GP / Skip.
+  const openReview=()=>{
+    if(universe.phase!=='Season complete')return;
+    if(review?.year===universe.year&&review.before===universe){navigate({page:'postseason',year:universe.year,step:'summary'});return;}
+    setBusy(true);
+    window.setTimeout(()=>{const before=universe;const pending=advanceToNextSeason(before);setBusy(false);setReview({year:before.year,before,pending,reached:0});navigate({page:'postseason',year:before.year,step:'summary'});},35);
+  };
+  openReviewRef.current=openReview;
+  const goReview=(step)=>{if(!review)return;const index=POSTSEASON_STEPS.indexOf(step);setReview((current)=>current?{...current,reached:Math.max(current.reached||0,index)}:current);navigate({page:'postseason',year:review.year,step});};
+  const commitReview=()=>{if(!review)return null;const next=review.pending;setUniverse(next);setReview(null);notify(`Welcome to ${yearLabel(next.year)}`);return next;};
+  const startYear=()=>{if(commitReview())navigate({page:'home'});};
+  const reviewNextGP=()=>{const next=commitReview();const first=next?.calendar?.[next.currentRound];if(first)openWeekend(first.id,next);};
+  const nextYear=openReview;
   const leaders=Object.fromEntries(SERIES_ORDER.map((series)=>[series,driverStandings(universe,series)[0]]));
   const pageProps={nextGP,universe,setUniverse,setPage,setSelectedDriver,setSelectedTeam,setSelectedEvent,setSelectedStaff,selectedCompetition,setSelectedCompetition,week,month,season,nextYear,busy,saveNow,saveAndExit,currentSlot,watchEvent,skipShowcase,nextF1,setSelectedRivalry};
-  const normalContent={home:<Home {...pageProps}/>,competitions:<Competitions {...pageProps}/>,schedule:<Schedule {...pageProps}/>,results:<Results {...pageProps}/>,drivers:<Drivers {...pageProps}/>,teams:<Teams {...pageProps}/>,paddock:<Paddock {...pageProps}/>,almanac:<Almanac {...pageProps}/>,more:<More {...pageProps}/>,weekend:<GrandPrixWeekend universe={universe} live={live?.weekend?live:null} step={weekendStep} go={goStep} onCommit={commitWeekend} onSkip={skipWeekend} ui={{Flag,Panel,QualifyingTable,RaceResultTable}} actions={{busy,home:()=>setPage('home'),fullResults:()=>live?.record&&navigate({event:{series:'F1',eventId:live.record.eventId,circuitId:live.record.circuitId}}),nextGP:(pendingShowcase||nextF1)?nextGP:null}}/>,live:live?<LiveRace universe={live.pending||universe} record={live.record} series={live.series} pending={Boolean(live.pending)} onComplete={commitLive} onSkip={skipLive} onBack={back} openDriver={live.pending?null:setSelectedDriver}/>:<section className="page"><Empty title="No race selected" body="Open an event and choose Watch race, or watch the next Grand Prix from Home."/></section>}[page];
+  const normalContent={home:<Home {...pageProps}/>,competitions:<Competitions {...pageProps}/>,schedule:<Schedule {...pageProps}/>,results:<Results {...pageProps}/>,drivers:<Drivers {...pageProps}/>,teams:<Teams {...pageProps}/>,paddock:<Paddock {...pageProps}/>,almanac:<Almanac {...pageProps}/>,more:<More {...pageProps}/>,postseason:<PostSeason review={review&&review.before===universe?review:null} step={postStep} go={goReview} onSkip={startYear} onStart={startYear} onNextGP={reviewNextGP} onOpen={openReview} canOpen={universe.phase==='Season complete'} openDriver={(id)=>getDriver(universe,id)&&setSelectedDriver(id)} busy={busy} ui={{Flag,Panel,RarityTag,SeriesTag,TeamStripe}}/>,weekend:<GrandPrixWeekend universe={universe} live={live?.weekend?live:null} step={weekendStep} go={goStep} onCommit={commitWeekend} onSkip={skipWeekend} ui={{Flag,Panel,QualifyingTable,RaceResultTable}} actions={{busy,home:()=>setPage('home'),fullResults:()=>live?.record&&navigate({event:{series:'F1',eventId:live.record.eventId,circuitId:live.record.circuitId}}),nextGP:(pendingShowcase||nextF1)?nextGP:null}}/>,live:live?<LiveRace universe={live.pending||universe} record={live.record} series={live.series} pending={Boolean(live.pending)} onComplete={commitLive} onSkip={skipLive} onBack={back} openDriver={live.pending?null:setSelectedDriver}/>:<section className="page"><Empty title="No race selected" body="Open an event and choose Watch race, or watch the next Grand Prix from Home."/></section>}[page];
   const content=selectedRivalry?<HeadToHeadPage universe={universe} pair={selectedRivalry} back={back} openDriver={setSelectedDriver}/>:selectedDriver?<DriverPage universe={universe} driver={getDriver(universe,selectedDriver)} back={back} openTeam={setSelectedTeam} openStaff={setSelectedStaff} openDriver={setSelectedDriver} openRivalry={setSelectedRivalry}/>:selectedTeam?<TeamPage universe={universe} team={getTeam(universe,selectedTeam)} back={back} openDriver={setSelectedDriver} openStaff={setSelectedStaff}/>:selectedStaff?<StaffPage universe={universe} member={getStaff(universe,selectedStaff)} back={back} openTeam={setSelectedTeam} openDriver={setSelectedDriver}/>:selectedEvent?<EventPage universe={universe} selection={selectedEvent} back={back} openDriver={setSelectedDriver} openTeam={setSelectedTeam} watchEvent={watchEvent} nextF1={nextF1} busy={busy}/>:normalContent;
 
   return <div className="app-shell">
-    <div className="global-sim-bar"><span><b>{yearLabel(universe.year)}</b> · Week {universe.currentWeek||1} · {universe.phase}</span><div>{pendingShowcase?<><button className="primary" onClick={()=>watchEvent('F1',pendingShowcase.eventId)} disabled={busy}>Watch {pendingShowcase.country} GP</button><button onClick={skipShowcase} disabled={busy}>Skip</button></>:universe.phase==='Season complete'?<button className="primary" onClick={nextYear} disabled={busy}>Move to {yearLabel(universe.year+1)}</button>:<>{nextF1&&<button className="sim-gp" onClick={nextGP} disabled={busy}>Next GP<span> · {nextF1.country}</span></button>}<button onClick={week} disabled={busy}>+1</button><button onClick={month} disabled={busy}>+4</button><button className="primary" onClick={season} disabled={busy}>Year end</button></>}</div></div>
+    <div className="global-sim-bar"><span><b>{yearLabel(universe.year)}</b> · Week {universe.currentWeek||1} · {universe.phase}</span><div>{pendingShowcase?<><button className="primary" onClick={()=>watchEvent('F1',pendingShowcase.eventId)} disabled={busy}>Watch {pendingShowcase.country} GP</button><button onClick={skipShowcase} disabled={busy}>Skip</button></>:universe.phase==='Season complete'?<button className="primary" onClick={nextYear} disabled={busy}>Season review</button>:<>{nextF1&&<button className="sim-gp" onClick={nextGP} disabled={busy}>Next GP<span> · {nextF1.country}</span></button>}<button onClick={week} disabled={busy}>+1</button><button onClick={month} disabled={busy}>+4</button><button className="primary" onClick={season} disabled={busy}>Year end</button></>}</div></div>
     <header className="topbar"><button className="brand" onClick={()=>setPage('home')}><b>F1</b><span>WORLD CHRONICLE</span></button><nav>{NAV.map(([id,label])=><button key={id} className={!selectedDriver&&!selectedTeam&&!selectedEvent&&!selectedStaff&&!selectedRivalry&&page===id?'active':''} onClick={()=>setPage(id)}>{label}</button>)}</nav><div className="top-actions"><button onClick={saveNow}>Save</button><button onClick={saveAndExit}>Slots</button></div></header>
     <div className="ticker"><div><small>WEEK {universe.currentWeek||1} · {event?.series||'WORLD'}</small><b>{event?.country||'Season complete'}</b><span>{event?.name||'Run the off-season'}</span></div><div className="ticker-series">{['F1','F2','F4'].map((series)=><span key={series}><small>{series}</small><b>{leaders[series]?.name||'—'}</b></span>)}</div></div>
     <main>{content}</main>{toast&&<div className="toast">{toast}</div>}

@@ -161,3 +161,22 @@
 @media(max-width:800px){.gpw-page{padding-left:16px;padding-right:16px}.gpw-crumbs{top:160px;margin-top:-14px}.gpw-grid,.gpw-grid.two{grid-template-columns:1fr}.gpw-hero{padding:20px 16px}.gpw-qrow{grid-template-columns:28px minmax(0,1fr) 78px;row-gap:2px}.gpw-qrow>small{grid-column:2/-1}.gpw-podium{grid-template-columns:1fr}.gpw-podium>div{order:0!important}}
 @media(max-width:500px){.global-sim-bar button.sim-gp span{display:none}.gpw-crumbs{border-radius:14px;padding:4px 6px 4px 10px}.gpw-crumbs li button{padding:7px 7px;font-size:12px}.gpw-crumbs li button:not(.active){max-width:none}.gpw-skip{padding:7px 10px;font-size:12px}}
 @media(prefers-reduced-motion:reduce){.gpw-qrow{transition:none}.gpw-qrow.shown{animation:none}}
+
+/* post-season review (reuses the gpw-* weekend styles) */
+.ps-page .panel{margin-bottom:18px}.ps-page .gpw-grid .panel{margin-bottom:0}.ps-page .gpw-grid{margin-bottom:18px}
+.ps-leaders{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.ps-leader{display:grid;gap:4px;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;color:inherit;cursor:pointer;min-width:0}.ps-leader:disabled{cursor:default}
+.ps-leader small{font-size:10px;letter-spacing:1.2px;font-weight:900;color:#ff5954;text-transform:uppercase}.ps-leader span{display:flex;align-items:center;gap:6px;min-width:0}.ps-leader span b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ps-leader .flag{min-width:0}.ps-leader .flag small{display:none}.ps-leader em{font-style:normal;font-weight:900;font-size:20px}
+.ps-award{font-size:11px!important;color:#c77dff!important}.ps-page .gpw-list>div:has(.ps-award){grid-template-columns:minmax(90px,140px) minmax(0,1fr)}
+.ps-rows>div{grid-template-columns:auto minmax(0,1fr) auto auto;cursor:pointer;border-bottom:1px solid #24242c;padding:8px 0}.ps-rows>div:has(.series-tag){grid-template-columns:auto minmax(0,1fr) auto auto auto}.ps-rows .flag small{display:none}.ps-rows .flag{min-width:0}
+.ps-rows span small{white-space:normal!important}.ps-rows .ps-reason{color:#8b8b95;font-style:italic}
+.ps-badge{font-style:normal;font-size:10px;font-weight:900;background:#c9a227;color:#111;border-radius:999px;padding:2px 7px;margin-left:4px;vertical-align:middle}
+.ps-hof{display:grid;gap:8px;background:linear-gradient(100deg,#3a2c08,#16161c 70%);border:1px solid #6b5514;border-radius:14px;padding:16px;margin-bottom:18px}.ps-hof>small{font-size:11px;letter-spacing:1.6px;font-weight:900;color:#e8c547}
+.ps-hof button{display:flex;flex-wrap:wrap;align-items:center;gap:8px;border:0;background:none;color:inherit;text-align:left;cursor:pointer;padding:0}.ps-hof button span{color:#c4c4cd;font-size:14px}
+.ps-more,.ps-breakdown{color:var(--muted);margin:10px 0 0;font-size:14px}.ps-breakdown{margin:0 0 10px}.ps-count{color:#c4c4cd;font-weight:800;margin:0 0 14px}
+@media(max-width:1000px){.ps-leaders{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:500px){.ps-rows>div,.ps-rows>div:has(.series-tag){grid-template-columns:auto minmax(0,1fr) auto}.ps-rows .rarity{display:none}.ps-leader em{font-size:16px}}
+.ps-champs{display:grid}.ps-champs>div{display:grid;grid-template-columns:48px minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #24242c}.ps-champs button{display:flex;align-items:center;gap:6px;border:0;background:none;color:inherit;padding:0;cursor:pointer;min-width:0;text-align:left}.ps-champs button b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ps-champs .flag{min-width:0}.ps-champs .flag small{display:none}.ps-champs>div>small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ps-rows.staff>div{grid-template-columns:minmax(0,1fr) auto auto}
+@media(max-width:500px){.ps-rows>div,.ps-rows>div:has(.series-tag){grid-template-columns:auto minmax(0,1fr) auto auto}.ps-rows.staff>div{grid-template-columns:minmax(0,1fr) auto}.ps-champs>div{grid-template-columns:40px minmax(0,1fr)}.ps-champs>div>small{grid-column:2}}
+.ps-page .gpw-list span b{display:flex;align-items:center;gap:6px;min-width:0}.ps-page .gpw-list .flag{min-width:0}.ps-page .gpw-list .flag small{display:none}
