@@ -11,7 +11,7 @@ export const RIVALRY_RULES={
   feederMax:1,            // at most one live rivalry per feeder series
   dormantAfter:2,         // seasons without a clash before a rivalry goes dormant
 };
-export const HALL_RULES={minTitles:1,minWins:20,topShare:.10,maxPerYear:2,ballotYears:5,
+export const HALL_RULES={minTitles:1,minWins:20,topShare:.07,maxPerYear:2,ballotYears:5,
   // Legacy weights. Rarity is deliberately absent.
   weights:{title:50,win:6,pole:2,podium:1.5,peakSeason:12,record:30}};
 const FEEDERS=['F2','F3','F4','FE','WEC'];

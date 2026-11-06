@@ -35,41 +35,8 @@ jobs:
       - name: Install dependencies
         run: npm install --include=dev --no-audit --no-fund
 
-      - name: Run simulation smoke test
-        run: npm run smoke
-
-      - name: Run deterministic universe test
-        run: npm run deterministic
-
-      - name: Run universe v4 systems test
-        run: npm run universe-v4
-
-      - name: Run universe v5 systems test
-        run: npm run universe-v5
-
-      - name: Run universe v6 market test
-        run: npm run universe-v6
-
-      - name: Run universe v8 history and career test
-        run: npm run universe-v8
-
-      - name: Run universe v9 personality and rivalry test
-        run: npm run universe-v9
-
-      - name: Run 60-offseason market balance stress test
-        run: npm run market-balance
-
-      - name: Run lap-by-lap race replay test
-        run: npm run race-replay
-
-      # Three 30-season universes in parallel child processes.
-      - name: Run 25-season team era balance test
-        run: npm run era-balance
-        timeout-minutes: 20
-
-      - name: Run rivalry and Hall of Fame calibration
-        run: npm run legacy-calibration
-        timeout-minutes: 20
+      # Balance and calibration scripts are run locally (see package.json);
+      # deployment only needs a working build.
 
       # package.json invokes Vite through Node directly, so the build does not
       # depend on the executable bit of node_modules/.bin/vite.

@@ -20,7 +20,7 @@ export const TEAM_BALANCE={
   fundingFloor:360,                         // minimum income guarantee
   bottomTeams:3,bottomMargin:30,            // the bottom three are guaranteed a small positive balance
   facilityGrantPerPoint:45,                 // catch-up grant per facility point below the grid average
-  restructureTitles:3,restructureWindow:5,restructurePenalty:1.2,          // hidden: 3+ titles in 5 seasons
+  restructureTitles:3,restructureWindow:5,restructurePenalty:3,          // hidden: 3+ titles in 5 seasons
   restructureHeavyTitles:6,restructureHeavyWindow:12,restructureHeavyPenalty:9, // hidden: 6+ titles in 12 seasons
   maxStraightTitles:3,teamStreakPenalty:12,driverStreakPenalty:7, // hidden: a 4th straight title is almost impossible
 };
