@@ -6,7 +6,7 @@ import { TYRE_BY_CODE } from './raceEngine.js';
 const TYRE_COLORS={S:'#e8352e',M:'#f2c230',H:'#e9e9ee',I:'#3fb950',W:'#3a86ff'};
 const BATTLE_TYPES=new Set(['overtake','failedAttack','contact','undercut']);
 const ROW=32;
-const MODES=[['highlights','Highlights'],['extended','Extended'],['result','Result only']];
+const MODES=[['top','Highlights'],['highlights','Extended highlights'],['extended','Every 3rd lap'],['result','Result only']];
 const SPEEDS=[1,2,4];
 
 export const driverCode=(driver)=>{const last=String(driver?.name||'???').trim().split(/\s+/).at(-1)||'???';return last.normalize('NFD').replace(/[̀-ͯ]/g,'').slice(0,3).toUpperCase();};
@@ -147,7 +147,7 @@ function RaceSummary({universe,race,openDriver}){
  */
 export function LiveRace({universe,record,series='F1',pending=false,onComplete,onSkip,onBack,openDriver}){
   const race=record?.sessions?.R;
-  const [mode,setMode]=useState(pending?'highlights':'highlights');
+  const [mode,setMode]=useState('top');
   const [speed,setSpeed]=useState(1);
   const [playing,setPlaying]=useState(false);
   const [index,setIndex]=useState(0);
@@ -218,7 +218,7 @@ export function LiveRace({universe,record,series='F1',pending=false,onComplete,o
           <ol>{feed.length?feed.map((m,i)=><li key={`${m.lap}-${m.type}-${i}`} className={m.type}><b>L{m.lap}</b><span>{m.text}</span></li>):<li className="quiet"><span>Waiting for lights out.</span></li>}</ol>
         </section>
         <div className="live-progress" aria-hidden="true"><i style={{width:`${beats.length>1?index/(beats.length-1)*100:100}%`}}/></div>
-        <p className="live-note">{mode==='highlights'?`Highlights: about ${Math.round(script.duration/1000)}s at 1×.`:mode==='extended'?`Extended: every third lap, about ${Math.round(script.duration/1000)}s at 1×.`:'Result only.'}</p>
+        <p className="live-note">{mode==='top'?`Highlights: top-3 fights only, about ${Math.round(script.duration/1000)}s at 1×.`:mode==='highlights'?`Extended highlights: about ${Math.round(script.duration/1000)}s at 1×.`:mode==='extended'?`Extended: every third lap, about ${Math.round(script.duration/1000)}s at 1×.`:'Result only.'}</p>
       </aside>
     </div>}
     {isFinal&&<RaceSummary universe={universe} race={race} openDriver={openDriver}/>}

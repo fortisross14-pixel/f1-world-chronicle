@@ -38,7 +38,8 @@ function Crumbs({step,reached,go,onSkip}){
   return <nav className="gpw-crumbs" aria-label="Post-season review">
     <span className="gpw-count">{index+1}/{POSTSEASON_STEPS.length}</span>
     <ol>{POSTSEASON_STEPS.map((id,i)=><li key={id}><button className={`${id===step?'active':''} ${i<=reached?'reached':''}`} disabled={i>reached} aria-current={id===step?'step':undefined} onClick={()=>go(id)}>{STEP_LABELS[id]}</button>{i<POSTSEASON_STEPS.length-1&&<i aria-hidden="true">›</i>}</li>)}</ol>
-    <button className="outline small gpw-skip" onClick={onSkip}>Skip review</button>
+    <button className="outline small gpw-skip" onClick={onSkip}>Skip<span> review</span></button>
+    {index<POSTSEASON_STEPS.length-1&&<button className="primary small gpw-top-next" onClick={()=>go(POSTSEASON_STEPS[index+1])}>Next ›</button>}
   </nav>;
 }
 const Next=({label,onClick})=><div className="gpw-next"><button className="primary" onClick={onClick}>{label}</button></div>;

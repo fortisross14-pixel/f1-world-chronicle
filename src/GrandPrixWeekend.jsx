@@ -37,11 +37,13 @@ function previousEdition(universe,record,event){
 }
 
 function Crumbs({steps,step,reached,go,onSkip,canSkip}){
+  const nextId=steps[steps.indexOf(step)+1];
   const index=steps.indexOf(step);
   return <nav className="gpw-crumbs" aria-label="Grand Prix weekend">
     <span className="gpw-count">{index+1}/{steps.length}</span>
     <ol>{steps.map((id,i)=><li key={id}><button className={`${id===step?'active':''} ${i<=reached?'reached':''}`} disabled={i>reached} aria-current={id===step?'step':undefined} onClick={()=>go(id)}>{STEP_LABELS[id]}</button>{i<steps.length-1&&<i aria-hidden="true">›</i>}</li>)}</ol>
-    {canSkip&&<button className="outline small gpw-skip" onClick={onSkip}>Skip to result</button>}
+    {canSkip&&<button className="outline small gpw-skip" onClick={onSkip}>Skip<span> to result</span></button>}
+    {nextId&&<button className="primary small gpw-top-next" onClick={()=>go(nextId)}>Next ›</button>}
   </nav>;
 }
 

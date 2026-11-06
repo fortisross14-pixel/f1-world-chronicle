@@ -27,7 +27,7 @@
 | History and GOAT | Series archives, records, awards, driver/team careers, lineages and multiple GOAT modes |
 | GitHub Pages | Relative Vite asset paths and an automated GitHub Actions build/deploy workflow |
 | Lap-by-lap racing | All cars run together lap by lap with on-track passing, real pit laps, SC/VSC/red flags on the lap they happen, and stored snapshots and scored moments (`src/raceEngine.js`, `src/moments.js`) |
-| Live Race | Highlights/Extended/Result-only director, running-order tower, gap strip, battle card, race radio, podium, driver of the day, strategy and position charts (`src/director.js`, `src/LiveRace.jsx`) |
+| Live Race | Highlights (top-3 fights)/Extended highlights/Every 3rd lap/Result-only director, running-order tower, gap strip, battle card, race radio, podium, driver of the day, strategy and position charts (`src/director.js`, `src/LiveRace.jsx`) |
 | Grand Prix weekend | Next GP button and guided Pre-race → Qualifying → Sprint → Race → Post-race flow with breadcrumbs, spoiler-free win odds and standings moves (`src/GrandPrixWeekend.jsx`, `docs/GRAND_PRIX_WEEKEND.md`) |
 | Post-season review | Guided Season summary → Retirements & rookies → Market → Pre-season flow; the off-season stays pending until Start/Next GP/Skip (`src/PostSeason.jsx`, `docs/POST_SEASON.md`) |
 | Showcase gate | Title deciders, wet forecasts, protected classics, all or none; the clock stops before a chosen race and its result does not exist until it is watched or skipped |

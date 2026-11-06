@@ -1,7 +1,10 @@
 // The race "director": turns stored lap snapshots and scored moments into a
 // short playback script. Pure functions, so scripts can test them in Node.
 
-export const DIRECTOR_MODES=['highlights','extended','result'];
+// top: only fights for the top 3. highlights: the wider highlights reel.
+export const DIRECTOR_MODES=['top','highlights','extended','result'];
+const TOP_BATTLES=new Set(['overtake','undercut','contact']);
+const isTopBattle=(m)=>TOP_BATTLES.has(m.type)&&m.position!=null&&m.position<=3;
 const BATTLE_TYPES=new Set(['overtake','failedAttack','contact','undercut']);
 const FLAG_TYPES=new Set(['sc','vsc','rain','restart']);
 
@@ -40,7 +43,7 @@ function closingLapCount(race){
  * Returns {beats, duration}. Each beat: {lap, fromLap, snapshot, moments, duration, kind}.
  * Durations are milliseconds at 1x speed.
  */
-export function buildDirectorScript(race,mode='highlights'){
+export function buildDirectorScript(race,mode='top'){
   if(!race?.snapshots?.length)return{beats:[],duration:0};
   const laps=finalLapOf(race);
   const moments=momentsOf(race);
@@ -62,6 +65,15 @@ export function buildDirectorScript(race,mode='highlights'){
   const closing=closingLapCount(race)*stepLaps;
   const closingFrom=laps-closing+1;
   const middle=moments.filter((m)=>m.type!=='start'&&m.type!=='finish'&&m.type!=='fastestLap'&&m.lap>stepLaps&&m.lap<closingFrom);
+  if(mode==='top'){
+    // Only position changes and contact for P1–P3, then straight to the flag.
+    const picked=pickHighlights(moments.filter((m)=>isTopBattle(m)&&m.lap>stepLaps&&m.lap<laps),99).sort((a,b)=>a.lap-b.lap||(b.score||0)-(a.score||0));
+    const byLap=new Map();
+    picked.forEach((moment)=>{const key=snapshotAt(race,moment.lap).lap;byLap.set(key,[...(byLap.get(key)||[]),moment]);});
+    [...byLap.entries()].sort((a,b)=>a[0]-b[0]).forEach(([lap,list])=>add(lap,list,3000+Math.min(2,list.length-1)*1000,'moment'));
+    add(laps,finishMoments,4200,'finish');
+    return{beats,duration:beats.reduce((sum,beat)=>sum+beat.duration,0)};
+  }
   if(mode==='highlights'){
     const rich=middle.filter((m)=>(m.score||0)>=8).length;
     const count=Math.max(10,Math.min(20,Math.round(8+rich/2)));

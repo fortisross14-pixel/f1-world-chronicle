@@ -21,7 +21,7 @@ including the next F1 race into a *pending* universe. The committed universe is 
 | Pre-race | `before` (committed universe) | Hero (round X of Y, flag, `raceForecast` rain chance and temperature, showcase reason), win odds, last year here, top 3 drivers/teams with gap, title-decider tag (`isTitleDecider`) |
 | Qualifying | race record `sessions.Q1/Q2/Q3/QUALI` | Q1/Q2/Q3 tabs; rows reveal slowest-first over ~2.5s ("Show all" skips; instant with reduced motion). Cut line, greyed eliminations with reason. Starting grid card after Q3 |
 | Sprint (sprint weekends only) | `sessions.SQUALI`, `sessions.S` | Sprint qualifying and sprint tables; "Watch sprint" uses LiveRace only if the sprint has replay data |
-| Race | `sessions.R` + pending universe | Embedded `LiveRace` (modes, speeds, skip). On finish it moves to Post-race after ~2s |
+| Race | `sessions.R` + pending universe | Embedded `LiveRace` (modes, speeds, skip). Default mode **Highlights** shows only top-3 fights. On finish it moves to Post-race after ~2s |
 | Post-race | committed universe after the race | Winner, podium, fastest lap, driver of the day, top 5 drivers/teams with points gained and ▲/▼ moves (diff against `before`), up to 3 new stories from this round |
 
 ## Spoiler rules
@@ -54,5 +54,5 @@ The top 8 are shown with a bar scaled to the favourite.
 ## Routes
 
 `#/weekend/<eventId>/<step>` with step `pre | quali | sprint | race | post`.
-Each step is a history entry, so browser Back/Forward move between steps. Steps are tappable once reached
+Each step is a history entry, so browser Back/Forward move between steps. The sticky breadcrumb also holds **Next ›** and **Skip**, so you never need to scroll to the bottom. Steps are tappable once reached
 (all steps after the result is committed or in a replay).

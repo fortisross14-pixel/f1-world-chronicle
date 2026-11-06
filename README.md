@@ -317,8 +317,9 @@ Across two seeded seasons, `race-replay` measures about 18 passes per race on ti
 
 Choose **Watch race** on an event page, or from Home or Schedule for the next Grand Prix. The "director" (`src/director.js`) scores each moment by the position at stake (the win far above a podium, P10/P11 above the midfield), title contenders, rivalries, rain, closing laps and how close the cars are. It then builds:
 
-- **Highlights**: the start, the 10–20 best moments and the last three to five laps, about 60–90 seconds at 1×.
-- **Extended**: every third lap plus the notable moments in between.
+- **Highlights** (default): the grid, the start, then only overtakes, undercuts and contact for P1–P3, then the flag. Usually 20–40 seconds at 1×.
+- **Extended highlights**: the start, the 10–20 best moments and the last three to five laps, about 60–90 seconds at 1×.
+- **Every 3rd lap**: every third lap plus the notable moments in between.
 - **Result only**: straight to the flag.
 
 The page shows a lap counter that jumps between moments (for example "Lap 12 → 19"), a flag banner, a running-order tower whose rows slide when positions change, a gap strip where cars within a second visibly clump, a battle card, a race-radio feed, play/pause, 1×/2×/4×, mode and skip-to-flag controls, and optional synthesized sound cues with a mute toggle. After the flag it shows the podium, driver of the day, a tyre-strategy chart and a position chart. It works at phone width and respects `prefers-reduced-motion`.

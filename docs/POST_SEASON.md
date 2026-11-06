@@ -13,7 +13,7 @@ Code: `src/PostSeason.jsx`, wired up in `App()` in `src/main.jsx`. Styles reuse 
   weekend) or **Skip review** (same as Start).
 - Leaving mid-flow keeps the season complete. Nothing is saved. Reopening reuses or recomputes `pending`
   (deterministic).
-- Sticky breadcrumb: steps are tappable once reached. Each step has a **Next ›** button.
+- Sticky breadcrumb: steps are tappable once reached. It also holds **Next ›** and **Skip review**. Each step repeats **Next ›** at the bottom.
 
 ## Steps and the universe they read
 
