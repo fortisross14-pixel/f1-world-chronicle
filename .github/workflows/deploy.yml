@@ -63,6 +63,10 @@ jobs:
         run: npm run race-replay
 
       # Three 30-season universes in parallel child processes.
+      - name: Run 25-season team era balance test
+        run: npm run era-balance
+        timeout-minutes: 20
+
       - name: Run rivalry and Hall of Fame calibration
         run: npm run legacy-calibration
         timeout-minutes: 20

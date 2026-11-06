@@ -18,7 +18,8 @@
     "universe-v9": "node scripts/universe-v9.mjs",
     "market-balance": "node scripts/market-balance.mjs",
     "race-replay": "node scripts/race-replay.mjs",
-    "legacy-calibration": "node scripts/legacy-calibration.mjs"
+    "legacy-calibration": "node scripts/legacy-calibration.mjs",
+    "era-balance": "node scripts/era-balance.mjs"
   },
   "dependencies": {
     "react": "^19.1.1",

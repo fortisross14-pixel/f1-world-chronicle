@@ -4,6 +4,52 @@ import { scoreMoments } from './moments.js';
 import { ensureLegacyState, updateRivalriesAfterRace, rivalryTitleHeat, rivalryLifecycle, runHallOfFameVote, rivalryHeatBetween } from './legacy.js';
 
 export const REPLAY_VERSION = 1;
+// Long-run team balance (Phase 2). Kept together so the era-balance test can explain them.
+export const TEAM_BALANCE={
+  allowanceTop:.65,allowanceBottom:1.15,    // development allowance by last constructors' position (P1 → last)
+  dynastyStep:.12,dynastyFloor:.6,          // further cut per constructors' title in the last four seasons beyond the first
+  costCap:110,costCapTailFactor:3,          // facility spend above the cap is sqrt-diminishing
+  surplusLeakShare:.30,surplusReserveFactor:1.6, // cash far above reserve leaks to marketing and dividends
+  regulationReset:.75,normalReset:.18,      // how far the car moves toward its technical target each off-season
+  targetConvergence:.3,                     // share of that target taken from the grid average (rivals copy ideas)
+  conceptNailBonus:[4,6],conceptReadSpread:2.4, // regulation-reset head start for one or two teams; everyone else's read
+  championReadWeight:.35,                   // recent champions are less likely to nail new rules
+  raceCarWeight:.58,raceDriverWeight:.15,   // race pace: car fit vs driver race pace
+  qualiCarWeight:.62,qualiDriverWeight:.24, // qualifying: car fit vs one-lap pace
+  fasterCarMargin:1.5,                      // car-average lead that tempts a happy elite driver away
+  fundingFloor:360,                         // minimum income guarantee
+  bottomTeams:3,bottomMargin:30,            // the bottom three are guaranteed a small positive balance
+  facilityGrantPerPoint:45,                 // catch-up grant per facility point below the grid average
+  restructureTitles:3,restructureWindow:5,restructurePenalty:1.2,          // hidden: 3+ titles in 5 seasons
+  restructureHeavyTitles:6,restructureHeavyWindow:12,restructureHeavyPenalty:9, // hidden: 6+ titles in 12 seasons
+  maxStraightTitles:3,teamStreakPenalty:12,driverStreakPenalty:7, // hidden: a 4th straight title is almost impossible
+};
+// Hidden "post-success restructuring" (never shown in the UI): a team that has
+// won too much loses car performance until those titles age out of the window.
+export function postSuccessRestructuring(team){
+  const seasons=team?.career?.seasons||[];
+  const titles=(window)=>seasons.slice(-window).filter((season)=>season.position===1).length;
+  const straight=seasons.slice(-TEAM_BALANCE.maxStraightTitles);
+  if(straight.length>=TEAM_BALANCE.maxStraightTitles&&straight.every((season)=>season.position===1))return{tier:3,penalty:TEAM_BALANCE.teamStreakPenalty};
+  if(titles(TEAM_BALANCE.restructureHeavyWindow)>=TEAM_BALANCE.restructureHeavyTitles)return{tier:2,penalty:TEAM_BALANCE.restructureHeavyPenalty};
+  if(titles(TEAM_BALANCE.restructureWindow)>=TEAM_BALANCE.restructureTitles)return{tier:1,penalty:TEAM_BALANCE.restructurePenalty};
+  return{tier:0,penalty:0};
+}
+// Hidden: a driver who has won the last three titles in a row is held back,
+// so a fourth straight championship happens only in extraordinary seasons.
+export function driverTitleStreakPenalty(universe,driver){
+  const archive=(universe.seasonArchive||[]).slice(-TEAM_BALANCE.maxStraightTitles);
+  return archive.length>=TEAM_BALANCE.maxStraightTitles&&archive.every((season)=>season.championId===driver?.id)?TEAM_BALANCE.driverStreakPenalty:0;
+}
+// Catch-up rule: last season's constructors' position scales development gains.
+export function developmentAllowance(universe,team){
+  const n=universe.teams?.length||11;
+  const position=team?.career?.seasons?.at(-1)?.position||Math.ceil(n/2);
+  const base=TEAM_BALANCE.allowanceTop+(Math.min(n,position)-1)/Math.max(1,n-1)*(TEAM_BALANCE.allowanceBottom-TEAM_BALANCE.allowanceTop);
+  // Each extra constructors' title in the last four seasons trims development further.
+  const recentTitles=(team?.career?.seasons||[]).slice(-4).filter((season)=>season.position===1).length;
+  return base*Math.max(TEAM_BALANCE.dynastyFloor,1-TEAM_BALANCE.dynastyStep*Math.max(0,recentTitles-1));
+}
 
 export const GRAND_PRIX_POINTS = [25,18,15,12,10,8,6,4,2,1];
 export const SPRINT_POINTS = [8,7,6,5,4,3,2,1];
@@ -174,7 +220,7 @@ function carFit(universe, team, circuit, mode='race') {
     (team.concept==='Race-focused' && mode==='race') || team.concept==='Balanced'
   ) ? 2.1 : 0;
   const setup = team.weekendSetup || 0;
-  return (high+low+straight+mechanical+tyre+operations+energy)/((traits.high+traits.low+traits.straight+((100-traits.high+traits.low)/150)*100)+(mode==='race'?103:30)+(mode==='race'?18:10)+(traits.straight/130)*100) * 100 + conceptBonus + setup + principalOversight(universe,team);
+  return (high+low+straight+mechanical+tyre+operations+energy)/((traits.high+traits.low+traits.straight+((100-traits.high+traits.low)/150)*100)+(mode==='race'?103:30)+(mode==='race'?18:10)+(traits.straight/130)*100) * 100 + conceptBonus + setup + principalOversight(universe,team) - postSuccessRestructuring(team).penalty;
 }
 
 function weatherForSession(event, sessionKey, rng) {
@@ -258,7 +304,7 @@ function qualifyingRun(universe,event,drivers,weather,temperature,roundName,rng,
     const trafficPenalty=rng.chance(roundName==='Q1'?.12:.06)?rng.next()*2.1:0;
     const deleted=rng.chance(clamp((96-effectiveDriverSkill(driver,'consistency'))/850,0.003,.045));
     const oneLapForm=centeredPerformanceSwing(rng,1.55)*(1.2-competitionSkill(driver,'consistency',.76)/270);
-    const score=carFit(universe,team,event,'qualifying')*.46+driverLevel(driver,'oneLap',weather)*.39+competitionSkill(driver,'composure',.7)*.04+driverCircuitSpecialtyScore(driver,event,weather)*1.15+thermalDriverScore(driver,temperature)*.65+runTiming+trackEvolution-trafficPenalty+oneLapForm+raceEngineerBoost(universe,driver)+(rng.next()-.5)*2.6;
+    const score=carFit(universe,team,event,'qualifying')*TEAM_BALANCE.qualiCarWeight+driverLevel(driver,'oneLap',weather)*TEAM_BALANCE.qualiDriverWeight+competitionSkill(driver,'composure',.7)*.04+driverCircuitSpecialtyScore(driver,event,weather)*1.15+thermalDriverScore(driver,temperature)*.65+runTiming+trackEvolution-trafficPenalty+oneLapForm+raceEngineerBoost(universe,driver)-driverTitleStreakPenalty(universe,driver)+(rng.next()-.5)*2.6;
     return {driverId:driver.id,teamId:team.id,score,time:lapTimeFromScore(score,event,'Qualifying',rng)+(deleted?.75:0),deleted,traffic:trafficPenalty>.6,compound:'Soft'};
   }).sort((a,b)=>a.time-b.time);
   const leader=rows[0].time;
@@ -360,9 +406,9 @@ function simulateRace(universe,event,session,rng,isSprint=false) {
     const startDelta=clamp(Math.round((startSkill-82)/12+(rng.next()-.5)*2),-2,2);
     const raceDayForm=centeredPerformanceSwing(rng,2.85)*(1.22-competitionSkill(driver,'consistency',.8)/280);
     const fit=carFit(universe,team,event,'race');
-    const common=fit*.39+competitionSkill(driver,'racecraft',.82)*.085+competitionSkill(driver,'tyre',.8)*.055+competitionSkill(driver,'consistency',.8)*.032+competitionSkill(driver,'composure',.8)*.023+thermalDriverScore(driver,temperature)*1.05+raceDayForm+(teamWeekendSwing.get(team.id)||0)+raceEngineerBoost(universe,driver)+recentWinPressure(universe,driver.id);
+    const common=fit*TEAM_BALANCE.raceCarWeight+competitionSkill(driver,'racecraft',.82)*.085+competitionSkill(driver,'tyre',.8)*.055+competitionSkill(driver,'consistency',.8)*.032+competitionSkill(driver,'composure',.8)*.023+thermalDriverScore(driver,temperature)*1.05+raceDayForm+(teamWeekendSwing.get(team.id)||0)+raceEngineerBoost(universe,driver)+recentWinPressure(universe,driver.id)-driverTitleStreakPenalty(universe,driver);
     const byState={};
-    const pace=timeline.map((track)=>byState[track]??=common+driverLevel(driver,'racePace',track)*.285+driverCircuitSpecialtyScore(driver,event,track)*1.4+racePaceStyleModifier(driver,event,index+1,track));
+    const pace=timeline.map((track)=>byState[track]??=common+driverLevel(driver,'racePace',track)*TEAM_BALANCE.raceDriverWeight+driverCircuitSpecialtyScore(driver,event,track)*1.4+racePaceStyleModifier(driver,event,index+1,track));
     const consistency=effectiveDriverSkill(driver,'consistency');
     const racecraft=competitionSkill(driver,'racecraft',.82);
     return{
@@ -701,7 +747,7 @@ function applyDevelopment(universe,event,rng){
   const candidates=universe.teams.map((team)=>{const tech=teamStaffRating(universe,team,'Technical Director');const test=testDriverContribution(universe,team);const facility=((team.facilities.aero||5)+(team.facilities.simulator||5))*5;const confidence=(facility+tech+test)/3;const gain=clamp((confidence-70)/68+rng.next()*.62,.05,1.25);const risk=clamp((100-confidence)/180,.03,.22);return{team,gain,failed:rng.chance(risk)};});
   candidates.forEach(({team,gain,failed})=>{
     const dimension=rng.pick(['high','low','straight','tyre','mechanical','energy','reliability','operations']);
-    const applied=failed?-gain*.35:gain; team.car[dimension]=clamp(team.car[dimension]+applied,60,99);team.season.development+=applied;
+    const applied=failed?-gain*.35:gain*developmentAllowance(universe,team); team.car[dimension]=clamp(team.car[dimension]+applied,60,99);team.season.development+=applied;
     team.upgrades.push({year:universe.year,round:event.round,dimension,gain:Number(applied.toFixed(2)),status:failed?'Correlation issue':'Successful'});
   });
   const best=[...candidates].sort((a,b)=>b.gain-a.gain)[0];
@@ -1077,7 +1123,8 @@ function teamMarketStrength(universe,team,series=team?.series||'F1'){
   // sustained technical quality make Ferrari/McLaren/Red Bull-style projects
   // attractive even after one bad year, while a genuinely wealthy rising team can
   // still break into the elite group through facilities and cash.
-  return clamp(sporting*.45+brandPower*.22+facilities*.13+cash*.12+form*.08,20,100);
+  // Results and the current car lead; brand power and cash are minor factors.
+  return clamp(sporting*.50+recentTeamForm(universe,team)*.20+brandPower*.10+facilities*.10+cash*.04+form*.06,20,100);
 }
 function driverMarketMerit(universe,driver){
   const pointsFactor={F1:.010,F2:.014,F3:.016,F4:.017,FE:.018,WEC:.018,FREE:0}[driver.series]||0;
@@ -1191,6 +1238,13 @@ function moveWithMarket(universe,driver,newSeries,newTeamId,role,seat,salary,rea
   const to={teamId:newTeam?.id||null,teamName:newTeam?.name||'Free agents',series:newSeries,seat:driver.seat||0,role,salary:driver.contract.salary};recordTransfer(universe,driver,from,to,reason);driver.marketOrigin=null;return{from,to};
 }
 function rngContract(driver){return driver.age<23?3:2;}
+// Recent results of a constructor: last season counts most, the one before still matters.
+function recentTeamForm(universe,team){
+  const n=universe.teams?.length||11;const seasons=(team?.career?.seasons||[]).filter((season)=>season.series==='F1'||!season.series);
+  const last=seasons.at(-1),before=seasons.at(-2);
+  const score=(season)=>season?clamp(100-(season.position-1)*(70/Math.max(1,n-1))+Math.min(10,(season.wins||0)*1.2),25,100):60;
+  return last?score(last)*.65+score(before||last)*.35:60;
+}
 function sportingPackage(universe,team,series){
   if(!team)return 20;
   const car=series==='F1'?avg(Object.values(team.car||{})):(team.rating||team.baseline||68);
@@ -1205,6 +1259,7 @@ function careerSportingPackage(universe,team,series){
   // F1 drivers evaluate both today's car and the organisation's ability to stay
   // competitive. A historically rich, well-funded technical operation remains a
   // more credible title destination than a one-season midfield spike.
+  // Car and recent results drive teamMarketStrength; brand power is a minor term there.
   if(series==='F1')return clamp(sporting*.52+teamMarketStrength(universe,team,'F1')*.30+seriesCareerPrestige(series)*.18,10,100);
   return clamp(sporting*.64+seriesCareerPrestige(series)*.36,10,100);
 }
@@ -1216,17 +1271,24 @@ function offerPackageScore(universe,driver,team,series,seat,salary){
   const principal=((teamPrincipal(universe,team)?.rating||70)-70)*.12;
   return role*.32+pay*.31+titles*.37+principal;
 }
+// An elite driver will look at a clearly faster car even when happy where they are.
+function fasterCarTemptation(universe,driver,team,series){
+  if(series!=='F1'||driver.series!=='F1'||currentDriverRating(driver)<85)return false;
+  const current=getTeam(universe,driver.teamId);if(!current?.car||!team?.car)return false;
+  return avg(Object.values(team.car))>=avg(Object.values(current.car))+TEAM_BALANCE.fasterCarMargin;
+}
 function acceptsOffer(universe,driver,team,series,seat,salary){
   const happiness=driver.happiness?.overall??65;
+  const tempted=fasterCarTemptation(universe,driver,team,series);
   // The >85 loyalty lock applies while the driver still has a seat. If the team
   // has just released him during a market cascade, stale pre-market happiness
   // cannot make him reject every available contract and drift into FE/WEC.
-  if(happiness>85&&driver.role!=='Free agent'&&!driver.marketOrigin)return false;
+  if(happiness>85&&driver.role!=='Free agent'&&!driver.marketOrigin&&!tempted)return false;
   const currentTeam=getTeam(universe,driver.teamId);
   const current=offerPackageScore(universe,driver,currentTeam,driver.series,driver.seat||3,driver.contract?.salary||0);
   const offered=offerPackageScore(universe,driver,team,series,seat,salary);
   const improvement=offered-current;
-  const required=happiness>=70?10:happiness>=50?5:0.1;
+  const required=tempted?2:happiness>=70?10:happiness>=50?5:0.1;
   return improvement>=required;
 }
 function willingnessScore(driver,series,seat,salary){
@@ -1273,7 +1335,8 @@ function findF1Offer(universe,driver,{priority=false,allTeams=false,blockedTeamI
     // Prime stars will move even for a modest sporting upgrade when it comes from
     // an established top-four title platform. Normal moves still need a clearly
     // stronger destination.
-    if(currentTeam&&strength<currentStrength+(urgentElite?0:priority?.75:3.75))continue;
+    // The grid is tighter now, so a smaller step up is a real upgrade.
+    if(currentTeam&&strength<currentStrength+(urgentElite?0:priority?.75:3.75)&&!fasterCarTemptation(universe,driver,team,'F1'))continue;
     // Top teams do not wait until their weakest driver is obviously inferior. If a
     // truly elite visible performer reaches the market, they are willing to replace
     // a merely comparable incumbent to secure the long-term seat.
@@ -1709,25 +1772,60 @@ function investFacilities(team,budget,baseCost,rng){
   return Math.round(spent);
 }
 
+// Regulation reset: every team reads the new rules differently; one or two nail them.
+function regulationConceptReads(universe,rng){
+  const reads=new Map();if(universe.year%4!==0)return reads;
+  universe.teams.forEach((team)=>reads.set(team.id,(rng.next()-.5)*TEAM_BALANCE.conceptReadSpread));
+  const count=rng.chance(.45)?2:1;const pool=[...universe.teams];const nailed=[];
+  for(let i=0;i<count&&pool.length;i+=1){
+    // Technical directors matter; midfield teams are not excluded and get a slight edge.
+    const weights=pool.map((team)=>{const tech=teamStaffRating(universe,team,'Technical Director');const position=team.career?.seasons?.at(-1)?.position||6;const recentChampion=(team.career?.seasons||[]).slice(-2).some((season)=>season.position===1);return Math.max(1,tech-62)*(position>=4?1.4:1)*(recentChampion?TEAM_BALANCE.championReadWeight:1);});
+    let roll=rng.next()*weights.reduce((sum,value)=>sum+value,0);let index=0;
+    while(index<weights.length-1&&roll>weights[index]){roll-=weights[index];index+=1;}
+    const team=pool.splice(index,1)[0];const tech=teamStaffRating(universe,team,'Technical Director');
+    const [low,high]=TEAM_BALANCE.conceptNailBonus;const bonus=(low+rng.next()*(high-low))*clamp(tech/85,.75,1.15);
+    reads.set(team.id,bonus);nailed.push({team,bonus});
+  }
+  nailed.forEach(({team,bonus})=>{team.conceptRead={year:universe.year,bonus:Number(bonus.toFixed(1))};createStory(universe,{category:'Technical Notebook',headline:`${team.name} has nailed the new regulations`,dek:`Winter testing points to a concept head start worth roughly ${bonus.toFixed(1)} points of car performance. Rivals will converge, but the first seasons of this rules era may belong to them.`,priority:94,subjects:[team.id],thread:'technical-race',round:0});});
+  return reads;
+}
 function updateTeamsAndSponsors(universe,rng){
   const lastConstructors=new Map((universe.teams||[]).map((team)=>[team.id,team.career.seasons.at(-1)?.position||universe.teams.length]));
+  const conceptReads=regulationConceptReads(universe,rng);
+  const gridFacilityAverage=avg(universe.teams.map((team)=>avg(Object.values(team.facilities||{}))));
+  const gridCarAverage=Object.fromEntries(Object.keys(universe.teams[0]?.car||{}).map((key)=>[key,avg(universe.teams.map((team)=>team.car[key]))]));
   universe.teams.forEach((team)=>{
     const tech=teamStaffRating(universe,team,'Technical Director');
     Object.keys(team.facilities||{}).forEach((key)=>{team.facilities[key]=clamp((team.facilities[key]||5)-facilityDecayAmount(team.facilities[key],rng),1,10);});
     const preInvestmentCash=team.finances?.cash||0;
     const reserve=145+Math.max(0,team.baseline-75)*2.2;
     const investCapacity=Math.max(0,Math.max(0,preInvestmentCash-reserve)*.72+Math.max(0,team.finances?.projectedBalance||0)*.62);
-    const facilityInvestment=investFacilities(team,investCapacity,8,rng);
+    // Cost cap: spending above the cap buys sharply less, so a cash pile does not buy speed.
+    // Catch-up grant for teams whose factories lag the grid average.
+    const lag=Math.max(0,gridFacilityAverage-avg(Object.values(team.facilities||{})));
+    const facilityGrant=lag>.6?Math.round(lag*TEAM_BALANCE.facilityGrantPerPoint):0;
+    const grantedCapacity=investCapacity+facilityGrant;
+    const cappedCapacity=grantedCapacity<=TEAM_BALANCE.costCap?grantedCapacity:TEAM_BALANCE.costCap+Math.sqrt(grantedCapacity-TEAM_BALANCE.costCap)*TEAM_BALANCE.costCapTailFactor;
+    const facilityInvestment=investFacilities(team,cappedCapacity,8,rng);
     const facility=avg(Object.values(team.facilities))*10;
     const test=testDriverContribution(universe,team);
     const engineeringSynergy=tech*facility/100;
-    const reset=universe.year%4===0?.52:.18;
+    const regulationYear=universe.year%4===0;
+    const reset=regulationYear?TEAM_BALANCE.regulationReset:TEAM_BALANCE.normalReset;
+    const allowance=developmentAllowance(universe,team);
+    const read=regulationYear?(conceptReads.get(team.id)||0):0;
     Object.keys(team.car).forEach((key)=>{
       const principal=teamPrincipal(universe,team);
       const target=tech*.225+facility*.225+engineeringSynergy*.185+test*.095+(getEngine(universe,team.engineId)?.trajectory||84)*.23+(principal?.rating||75)*.04;
-      team.car[key]=clamp(team.car[key]*(1-reset)+target*reset+(rng.next()-.5)*2.8,62,98);
+      const converged=target*(1-TEAM_BALANCE.targetConvergence)+(gridCarAverage[key]??target)*TEAM_BALANCE.targetConvergence;
+      const next=team.car[key]*(1-reset)+converged*reset+(rng.next()-.5)*2.8;
+      let delta=next-team.car[key];
+      if(delta>0)delta*=allowance;
+      // A concept read is a fresh start under new rules, so the allowance does not shrink it.
+      team.car[key]=clamp(team.car[key]+delta+read,62,98);
     });
     team.finances.facilityInvestment=facilityInvestment;
+    team.postSuccessRestructuring=postSuccessRestructuring(team).tier;
     team.baseline=avg(Object.values(team.car));
 
     const brand=getMainBrand(universe,team.mainBrandId)||MAIN_BRANDS[0];
@@ -1745,14 +1843,17 @@ function updateTeamsAndSponsors(universe,rng){
     const developmentCost=Math.round(45+avg(Object.values(team.facilities))*6.5+Math.max(0,team.baseline-75)*2.2+(team.finances.facilityInvestment||0));
     const operatingCost=Math.round(180+team.baseline*1.28+avg(Object.values(team.facilities))*5.2);
     const mainFunding=brand.funding;
-    const totalIncome=mainFunding+secondaryIncome+prizeMoney;
+    // Funding floor: prize money plus a guarantee keeps the back of the grid investing.
+    const fundingSupport=Math.max(0,TEAM_BALANCE.fundingFloor-(mainFunding+secondaryIncome+prizeMoney));
+    const totalIncome=mainFunding+secondaryIncome+prizeMoney+fundingSupport;
     const totalExpenses=driverCost+staffCost+team.finances.engineCost+developmentCost+operatingCost;
-    const projectedBalance=totalIncome-totalExpenses;
+    const bottomGuarantee=position>universe.teams.length-TEAM_BALANCE.bottomTeams?Math.max(0,totalExpenses+TEAM_BALANCE.bottomMargin-totalIncome):0;
+    const projectedBalance=totalIncome+bottomGuarantee-totalExpenses;
 
     team.finances.mainFunding=mainFunding;
     team.finances.secondarySponsorIncome=secondaryIncome;
     team.finances.sponsorIncome=mainFunding+secondaryIncome;
-    team.finances.prizeMoney=prizeMoney;
+    team.finances.prizeMoney=prizeMoney;team.finances.fundingSupport=fundingSupport+bottomGuarantee;team.finances.facilityGrant=facilityGrant;
     team.finances.driverCost=driverCost;
     team.finances.staffCost=staffCost;
     team.finances.developmentCost=developmentCost;
@@ -1760,6 +1861,10 @@ function updateTeamsAndSponsors(universe,rng){
     team.finances.dealQuality=principal?.commercial||72;
     team.finances.projectedBalance=Math.round(projectedBalance);
     team.finances.cash=Math.max(0,Math.round(team.finances.cash+projectedBalance*.34));
+    // Cash far above the operating reserve leaks into brand marketing and owner dividends.
+    const surplus=team.finances.cash-reserve*TEAM_BALANCE.surplusReserveFactor;
+    team.finances.nonPerformanceSpend=surplus>0?Math.round(surplus*TEAM_BALANCE.surplusLeakShare):0;
+    team.finances.cash-=team.finances.nonPerformanceSpend;
     team.finances.vulnerable=!brand.protected&&(team.finances.cash<145||projectedBalance<-45);
 
     resetTeamSeason(team);team.upgrades=[];
@@ -1795,11 +1900,14 @@ function updateTeamsAndSponsors(universe,rng){
 
   // A grid identity changes only occasionally and only one slot can change in an off-season.
   const changeWindow=(universe.year-1)%3===0||rng.chance(.09);
+  const n=universe.teams.length;
+  const struggling=(team)=>{const seasons=team.career?.seasons||[];return seasons.length>=2&&seasons.slice(-2).every((season)=>(season.position||0)>=n-2);};
   const vulnerable=universe.teams.filter((team)=>{
     const brand=getMainBrand(universe,team.mainBrandId);
-    return !brand?.protected&&(team.finances.vulnerable||team.finances.cash<120);
-  }).sort((a,b)=>a.finances.cash-b.finances.cash)[0];
-  if(changeWindow&&vulnerable&&universe.settings.teamDynamism!=='Static'&&rng.chance(.58)){
+    return !brand?.protected&&(team.finances.vulnerable||team.finances.cash<120||struggling(team));
+  }).sort((a,b)=>Number(struggling(b))-Number(struggling(a))||a.finances.cash-b.finances.cash)[0];
+  const takeoverChance=vulnerable&&struggling(vulnerable)?.75:.58;
+  if((changeWindow||(vulnerable&&struggling(vulnerable)&&rng.chance(.35)))&&vulnerable&&universe.settings.teamDynamism!=='Static'&&rng.chance(takeoverChance)){
     const activeBrands=new Set(universe.teams.map((team)=>team.mainBrandId));
     const candidates=(universe.mainBrands||MAIN_BRANDS).filter((brand)=>!activeBrands.has(brand.id));
     const incoming=rng.pick(candidates);
@@ -1812,6 +1920,8 @@ function updateTeamsAndSponsors(universe,rng){
       vulnerable.heritage=Math.max(38,Math.round(vulnerable.heritage*.72));
       vulnerable.finances.mainFunding=incoming.funding;vulnerable.finances.annualBudget=incoming.funding;
       vulnerable.finances.cash+=Math.round(incoming.funding*.48);
+      // Fresh owners invest straight into the factory.
+      Object.keys(vulnerable.facilities||{}).forEach((key)=>{vulnerable.facilities[key]=clamp((vulnerable.facilities[key]||5)+.9,1,10);});
       vulnerable.finances.vulnerable=false;
       vulnerable.lineage.push({year:universe.year,name:vulnerable.name,owner:incoming.name,mainBrandId:incoming.id,engineId:vulnerable.engineId,previous:oldName});
       vulnerable.liveryHistory.push({year:universe.year,primary:vulnerable.primary,secondary:vulnerable.secondary,titleSponsor:incoming.name,note:`Acquired ${oldBrand?.name||oldName} grid slot`});
@@ -1864,8 +1974,12 @@ function updateSupportTeams(universe,rng){
 function exchangeStaffWithinGroup(universe,rng,teams,series){
   if(!teams?.length||teams.length<3)return false;
   const ordered=[...teams].sort((a,b)=>(b.baseline||b.rating||0)-(a.baseline||a.rating||0));
-  const hiring=rng.pick(ordered.slice(0,Math.max(2,Math.ceil(ordered.length*.4))));
-  const sourcePool=ordered.slice(Math.max(1,Math.floor(ordered.length*.45))).filter((team)=>team.id!==hiring?.id);
+  // Staff move both ways. Most moves are ambitious midfield projects poaching
+  // from the leaders with bigger roles, which stops the fastest car hoarding talent.
+  const leaders=ordered.slice(0,Math.max(2,Math.ceil(ordered.length*.4)));const chasers=ordered.slice(Math.max(1,Math.floor(ordered.length*.4)));
+  const chasersHire=rng.chance(.6);
+  const hiring=rng.pick(chasersHire?chasers:leaders);
+  const sourcePool=(chasersHire?leaders:chasers).filter((team)=>team.id!==hiring?.id);
   const source=rng.pick(sourcePool);if(!hiring||!source)return false;
   const candidates=(source.staffIds||[]).map((id)=>getStaff(universe,id)).filter((member)=>member&&member.ambition>60).sort((a,b)=>b.rating-a.rating);
   const recruit=candidates[0];if(!recruit)return false;
